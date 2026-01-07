@@ -1,0 +1,51 @@
+{
+  "name": "aisearchengine",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "lint": "eslint"
+  },
+  "dependencies": {
+    "@google/generative-ai": "^0.24.1",
+    "@iarna/toml": "^2.2.5",
+    "@modelcontextprotocol/sdk": "^1.24.3",
+    "axios": "^1.13.2",
+    "cheerio": "^1.1.2",
+    "groq-sdk": "^0.37.0",
+    "lucide-react": "^0.553.0",
+    "mongoose": "^8.20.1",
+    "next": "16.0.1",
+    "node-fetch": "^3.3.2",
+    "openai": "^6.9.1",
+    "pdf2json": "^4.0.0",
+    "react": "19.2.0",
+    "react-dom": "19.2.0",
+    "react-markdown": "^10.1.0",
+    "react-router-dom": "^7.9.6",
+    "recharts": "^3.5.1",
+    "rss-parser": "^3.13.0",
+    "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.1.17",
+    "@types/debug": "^4.1.12",
+    "@types/estree-jsx": "^1.0.5",
+    "@types/hast": "^3.0.4",
+    "@types/iarna__toml": "^2.0.5",
+    "@types/mdast": "^4.0.4",
+    "@types/ms": "^2.1.0",
+    "@types/node": "^20.19.25",
+    "@types/pdf-parse": "^1.1.5",
+    "@types/react": "^19.2.7",
+    "@types/react-dom": "^19.2.3",
+    "@types/unist": "^3.0.3",
+    "baseline-browser-mapping": "^2.8.32",
+    "eslint": "^9.39.1",
+    "eslint-config-next": "16.0.1",
+    "tailwindcss": "^4.1.17",
+    "typescript": "^5.9.3"
+  }
+}
