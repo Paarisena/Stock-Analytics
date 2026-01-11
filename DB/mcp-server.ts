@@ -66,6 +66,7 @@ server.setRequestHandler(CallToolRequestSchema, async(request)=>{
             
             // Get OHLC data
             const open = indicators.open?.[0] || meta.regularMarketOpen;
+            const close = indicators.close?.[0] || meta.regularMarketClose;
             const high = meta.regularMarketDayHigh || Math.max(...indicators.high.filter((h: number) => h !== null));
             const low = meta.regularMarketDayLow || Math.min(...indicators.low.filter((l: number) => l !== null));
             const volume = indicators.volume[indicators.volume.length - 1];
@@ -84,6 +85,7 @@ server.setRequestHandler(CallToolRequestSchema, async(request)=>{
                             high: high,
                             low: low,
                             open: open,
+                            close: close,
                             previousClose: previousClose,
                             volume: volume,
                             currency: meta.currency || 'USD',

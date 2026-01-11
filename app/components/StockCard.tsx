@@ -906,8 +906,7 @@ export default function StockCard({ data }: { data: StockData }) {
             ))}
           </div>
         </div>
-          )
-      }
+          )}
 
       {/* Short Term Prediction */}
       <div className="mb-6 p-5 bg-gradient-to-br from-purple-900/30 via-purple-800/20 to-blue-900/20 border border-purple-500/40 rounded-2xl shadow-lg shadow-purple-500/10">
@@ -1748,9 +1747,6 @@ export default function StockCard({ data }: { data: StockData }) {
                 </p>
               </div>
             )}
-          </div>
-        
-      
 
             {/* Key Risks & Opportunities Side by Side */}
             <div className="grid md:grid-cols-2 gap-4">
@@ -1791,24 +1787,25 @@ export default function StockCard({ data }: { data: StockData }) {
               )}
             </div>
 
-            {/* Year-over-Year Balance Sheet Summary */}
-            {data.annualReport?.balanceSheet?.summary && (
-              <div className="mt-4 bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-lg p-4 border border-indigo-500/30">
-                <h4 className="text-sm font-semibold text-indigo-300 mb-3 flex items-center gap-2">
-                  <span className="text-lg">📈</span>
-                  Year-over-Year Financial Performance
-                </h4>
-                <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
-                  {data.annualReport.balanceSheet.summary}
-                </p>
-              </div>
-            )}
-            
-            {/* Executive Remuneration */}
-            {data.annualReport.remuneration && (
+              {/* Year-over-Year Balance Sheet Summary */}
+              {data.annualReport?.balanceSheet?.summary && (
+                <div className="mt-4 bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-lg p-4 border border-indigo-500/30">
+                  <h4 className="text-sm font-semibold text-indigo-300 mb-3 flex items-center gap-2">
+                    <span className="text-lg">📈</span>
+                    Year-over-Year Financial Performance
+                  </h4>
+                  <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
+                    {data.annualReport.balanceSheet.summary}
+                  </p>
+                </div>
+              )}
+            </div>
+              
+              {/* Executive Remuneration */}
+              {data.annualReport.remuneration && data.annualReport.remuneration.available !== false && data.annualReport.remuneration.executiveDirectors && (
               <div className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 rounded-lg p-4 border border-yellow-500/30">
                 <h4 className="text-lg font-semibold text-yellow-300 mb-3 flex items-center gap-2">
-                  <span>💼</span> Executive Remuneration ({data.annualReport.remuneration.fiscalYear})
+                  <span className="text-xl">💼</span> Executive Remuneration ({data.annualReport.remuneration.fiscalYear})
                 </h4>
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm text-gray-300 border-collapse">
@@ -1835,9 +1832,26 @@ export default function StockCard({ data }: { data: StockData }) {
                 </div>
               </div>
             )}
-            
+
+                {/* Show placeholder message if remuneration data is unavailable */}
+                {data.annualReport.remuneration && data.annualReport.remuneration.available === false && (
+                  <div className="bg-gradient-to-br from-yellow-900/20 to-orange-900/20 rounded-lg p-4 border border-yellow-500/20">
+                    <h4 className="text-lg font-semibold text-yellow-300 mb-2 flex items-center gap-2">
+                      <span className="text-xl">💼</span> Executive Remuneration
+                    </h4>
+                    <p className="text-sm text-gray-400 italic">
+                      ℹ️ {data.annualReport.remuneration.note}
+                    </p>
+                    {data.annualReport.remuneration.fiscalYear && (
+                      <p className="text-xs text-gray-500 mt-2">
+                        Fiscal Year: {data.annualReport.remuneration.fiscalYear}
+                      </p>
+                    )}
+                  </div>
+                )}
+
             {/* Audit Report */}
-            {data.annualReport.auditInformation && (
+            {data.annualReport.auditInformation && data.annualReport.auditInformation.available !== false && data.annualReport.auditInformation.auditor && (
               <div className="bg-gradient-to-br from-slate-900/40 to-gray-900/40 rounded-2xl p-6 border border-slate-500/30 shadow-2xl">
                 <h4 className="text-2xl font-bold text-slate-200 mb-6 flex items-center gap-3">
                   <span className="text-3xl">🔍</span> 
@@ -2109,7 +2123,7 @@ export default function StockCard({ data }: { data: StockData }) {
                             </div>
                             {data.annualReport.auditInformation.legalRegulatoryCompliance.section143_3.internalControlsOpinion && (
                               <div className="md:col-span-2 mt-2 pt-2 border-t border-slate-600/30">
-                                <span className="text-xs text-slate-400">Internal Controls Opinion:</span>
+                                <span className="text-xs text-slate-400 mb-1">Internal Controls Opinion:</span>
                                 <p className="text-sm text-gray-300 mt-1">{data.annualReport.auditInformation.legalRegulatoryCompliance.section143_3.internalControlsOpinion}</p>
                               </div>
                             )}
@@ -2215,11 +2229,27 @@ export default function StockCard({ data }: { data: StockData }) {
                             <p className="text-xs text-red-400 mb-2">⚠️ Subsidiaries with Issues:</p>
                             <ul className="list-disc list-inside space-y-1 text-gray-300">
                               {data.annualReport.auditInformation.caro.subsidiariesWithIssues.map((sub: any, idx: number) => (
-                                <li key={idx}>{sub}</li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
+                                <li key={idx} className="flex justify-between items-center">
+          <span>{typeof sub === 'string' ? sub : (sub.name || 'Unknown')}</span>
+          {typeof sub === 'object' && (
+            <div className="flex items-center gap-2">
+              {sub.cin && (
+                <span className="text-xs font-mono bg-slate-700/50 px-2 py-1 rounded">
+                  {sub.cin}
+                </span>
+              )}
+              {sub.caroStatus && (
+                <span className="text-xs text-red-400 bg-red-900/30 px-2 py-1 rounded">
+                  {sub.caroStatus}
+                </span>
+              )}
+            </div>
+          )}
+        </li>
+      ))}
+    </ul>
+  </div>
+)}
                         
                         {data.annualReport.auditInformation.caro.subsidiariesCARONotIssued && 
                          data.annualReport.auditInformation.caro.subsidiariesCARONotIssued.length > 0 && (
@@ -2352,7 +2382,9 @@ export default function StockCard({ data }: { data: StockData }) {
                       {/* Component Auditors */}
                       {data.annualReport.auditInformation.consolidationScope.componentAuditors && (
                         <div className="mt-4 bg-slate-800/40 rounded-lg p-4 border border-slate-600/30">
-                          <h6 className="text-sm font-semibold text-cyan-200 mb-3">Component Auditors</h6>
+                          <h6 className="text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2">
+                            <span>🧑‍🤝‍🧑</span> Component Auditors
+                          </h6>
                           <div className="grid md:grid-cols-2 gap-3 text-sm">
                             <div>
                               <span className="text-slate-400">Percentage of Revenue:</span>
@@ -2383,9 +2415,300 @@ export default function StockCard({ data }: { data: StockData }) {
                 </div>
               </div>
             )}
-          </div> 
+
+            {/* Detailed Cash Flow Statement from Annual Report */}
+            {data.annualReport?.cashFlow && (
+              <div className="bg-gradient-to-br from-cyan-900/30 to-blue-900/20 rounded-2xl p-5 border border-cyan-500/30 mb-6">
+                <h4 className="text-base font-bold text-cyan-300 mb-4 flex items-center gap-2">
+                  <span className="text-xl">💰</span> 
+                  Consolidated Cash Flow Statement
+                  {data.annualReport.cashFlow.reconciliation?.validationPassed ? (
+                    <span className="ml-2 text-xs bg-green-500/20 px-2 py-1 rounded-full border border-green-500/40">
+                      ✓ Validated
+                    </span>
+                  ) : (
+                    <span className="ml-2 text-xs bg-yellow-500/20 px-2 py-1 rounded-full border border-yellow-500/40">
+                      ⚠ {data.annualReport.cashFlow.reconciliation?.validationError || "Check Required"}
+                    </span>
+                  )}
+                </h4>
+                {/* Three-Column Layout - Operating, Investing, Financing */}
+                <div className="grid md:grid-cols-3 gap-4 mb-4">
+                  {/* Operating Activities */}
+                  <div className="bg-green-900/20 rounded-lg p-4 border border-green-500/20">
+                    <h5 className="text-sm font-semibold text-green-300 mb-3 flex items-center gap-2">
+                      🔄 Operating Activities
+                    </h5>
+                    <div className="space-y-2 text-xs">
+                      {data.annualReport.cashFlow.operatingActivities?.netCashFromOperating && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Net Cash from Operating:</span>
+                          <span className="text-white font-semibold">
+                            ₹{renderValue(data.annualReport.cashFlow.operatingActivities.netCashFromOperating.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.operatingActivities?.cashGeneratedFromOperations && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Cash Generated:</span>
+                          <span className="text-gray-300">
+                            ₹{renderValue(data.annualReport.cashFlow.operatingActivities.cashGeneratedFromOperations.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.operatingActivities?.taxesPaid && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Taxes Paid:</span>
+                          <span className="text-red-300">
+                            ₹{renderValue(data.annualReport.cashFlow.operatingActivities.taxesPaid.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.yoyComparison?.operatingCashFlow?.changePercent && (
+                        <div className={`mt-2 pt-2 border-t border-green-500/20 ${
+                          data.annualReport.cashFlow.yoyComparison.operatingCashFlow.changePercent > 0 
+                            ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {data.annualReport.cashFlow.yoyComparison.operatingCashFlow.changePercent > 0 ? '↑' : '↓'} 
+                          {Math.abs(data.annualReport.cashFlow.yoyComparison.operatingCashFlow.changePercent)}% YoY
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Investing Activities */}
+                  <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-500/20">
+                    <h5 className="text-sm font-semibold text-blue-300 mb-3 flex items-center gap-2">
+                      💼 Investing Activities
+                    </h5>
+                    <div className="space-y-2 text-xs">
+                      {data.annualReport.cashFlow.investingActivities?.totalCapex && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Total Capex:</span>
+                          <span className="text-white font-semibold">
+                            ₹{Math.abs(Number(renderValue(data.annualReport.cashFlow.investingActivities.totalCapex.current)) || 0)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.investingActivities?.capexPPE && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">• PPE:</span>
+                          <span className="text-gray-300">
+                            ₹{Math.abs(Number(renderValue(data.annualReport.cashFlow.investingActivities.capexPPE.current)) || 0)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.investingActivities?.capexIntangibles && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">• Intangibles:</span>
+                          <span className="text-gray-300">
+                            ₹{Math.abs(Number(renderValue(data.annualReport.cashFlow.investingActivities.capexIntangibles.current)) || 0)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.investingActivities?.netCashFromInvesting && (
+                        <div className="flex justify-between mt-2 pt-2 border-t border-blue-500/20">
+                          <span className="text-gray-400">Net Cash:</span>
+                          <span className="text-white font-semibold">
+                            ₹{renderValue(data.annualReport.cashFlow.investingActivities.netCashFromInvesting.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Financing Activities */}
+                  <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                    <h5 className="text-sm font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                      🏦 Financing Activities
+                    </h5>
+                    <div className="space-y-2 text-xs">
+                      {data.annualReport.cashFlow.financingActivities?.dividendsPaid && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Dividends Paid:</span>
+                          <span className="text-white font-semibold">
+                            ₹{Math.abs(Number(renderValue(data.annualReport.cashFlow.financingActivities.dividendsPaid.current)) || 0)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.financingActivities?.interestPaid && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Interest Paid:</span>
+                          <span className="text-gray-300">
+                            ₹{Math.abs(Number(renderValue(data.annualReport.cashFlow.financingActivities.interestPaid.current)) || 0)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.financingActivities?.netBorrowingChange && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Net Borrowing Change:</span>
+                          <span className="text-gray-300">
+                            ₹{renderValue(data.annualReport.cashFlow.financingActivities.netBorrowingChange.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.financingActivities?.netCashFromFinancing && (
+                        <div className="flex justify-between mt-2 pt-2 border-t border-purple-500/20">
+                          <span className="text-gray-400">Net Cash:</span>
+                          <span className="text-white font-semibold">
+                            ₹{renderValue(data.annualReport.cashFlow.financingActivities.netCashFromFinancing.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                {/* Key Metrics Row */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                  {data.annualReport.cashFlow.derivedMetrics?.freeCashFlow && (
+                    <div className="bg-gray-800/40 rounded-lg p-3">
+                      <div className="text-xs text-gray-400 mb-1">Free Cash Flow</div>
+                      <div className="text-xl font-bold text-green-400">
+                        ₹{renderValue(data.annualReport.cashFlow.derivedMetrics.freeCashFlow.current)} Cr
+                      </div>
+                      {data.annualReport.cashFlow.yoyComparison?.freeCashFlow?.changePercent && (
+                        <div className={`text-xs mt-1 ${
+                          data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent > 0 
+                            ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent > 0 ? '↑' : '↓'} 
+                          {Math.abs(data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent)}% YoY
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  {data.annualReport.cashFlow.derivedMetrics?.cashConversionRatio && (
+                    <div className="bg-gray-800/40 rounded-lg p-3">
+                      <div className="text-xs text-gray-400 mb-1">Cash Conversion</div>
+                      <div className="text-xl font-bold text-blue-400">
+                        {renderValue(data.annualReport.cashFlow.derivedMetrics.cashConversionRatio.current)}%
+                      </div>
+                    </div>
+                  )}
+                  {data.annualReport.cashFlow.healthIndicators?.cashFlowQuality && (
+                    <div className="bg-gray-800/40 rounded-lg p-3">
+                      <div className="text-xs text-gray-400 mb-1">CF Quality</div>
+                      <div className={`text-lg font-bold ${
+                        data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Excellent' ? 'text-green-400' :
+                        data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Good' ? 'text-blue-400' :
+                        'text-yellow-400'
+                      }`}>
+                        {renderValue(data.annualReport.cashFlow.healthIndicators.cashFlowQuality)}
+                      </div>
+                    </div>
+                  )}
+                  {data.annualReport.cashFlow.reconciliation?.closingCash && (
+                    <div className="bg-gray-800/40 rounded-lg p-3">
+                      <div className="text-xs text-gray-400 mb-1">Closing Cash</div>
+                      <div className="text-xl font-bold text-white">
+                        ₹{renderValue(data.annualReport.cashFlow.reconciliation.closingCash.current)} Cr
+                      </div>
+                      {data.annualReport.cashFlow.yoyComparison?.closingCash?.changePercent && (
+                        <div className={`text-xs mt-1 ${
+                          data.annualReport.cashFlow.yoyComparison.closingCash.changePercent > 0 
+                            ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          {data.annualReport.cashFlow.yoyComparison.closingCash.changePercent > 0 ? '↑' : '↓'} 
+                          {Math.abs(data.annualReport.cashFlow.yoyComparison.closingCash.changePercent)}% YoY
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Working Capital Changes - Expandable */}
+                {data.annualReport.cashFlow.workingCapitalChanges && (
+                  <details className="bg-gray-800/30 rounded-lg p-3 mb-4">
+                    <summary className="cursor-pointer text-sm font-semibold text-cyan-300 flex items-center gap-2">
+                      📊 Working Capital Changes
+                    </summary>
+                    <div className="mt-3 grid grid-cols-2 md:grid-cols-4 gap-3 text-xs">
+                      {data.annualReport.cashFlow.workingCapitalChanges.inventoryChange && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Inventory:</span>
+                          <span className="text-white">
+                            ₹{renderValue(data.annualReport.cashFlow.workingCapitalChanges.inventoryChange.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.workingCapitalChanges.receivablesChange && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Receivables:</span>
+                          <span className="text-white">
+                            ₹{renderValue(data.annualReport.cashFlow.workingCapitalChanges.receivablesChange.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.workingCapitalChanges.payablesChange && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Payables:</span>
+                          <span className="text-white">
+                            ₹{renderValue(data.annualReport.cashFlow.workingCapitalChanges.payablesChange.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.workingCapitalChanges.otherWCChanges && (
+                        <div className="flex justify-between">
+                          <span className="text-gray-400">Other WC:</span>
+                          <span className="text-white">
+                            ₹{renderValue(data.annualReport.cashFlow.workingCapitalChanges.otherWCChanges.current)} Cr
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </details>
+                )}
+
+                {/* Health Indicators */}
+                {data.annualReport.cashFlow.healthIndicators && (
+                  <div className="bg-gray-800/30 rounded-lg p-3 mb-4">
+                    <h5 className="text-sm font-semibold text-cyan-300 mb-2">Health Indicators</h5>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-2 text-xs">
+                      {data.annualReport.cashFlow.healthIndicators.isOperatingCFPositive !== null && (
+                        <div className="flex items-center gap-2">
+                          <span className={data.annualReport.cashFlow.healthIndicators.isOperatingCFPositive ? 'text-green-400' : 'text-red-400'}>
+                            {data.annualReport.cashFlow.healthIndicators.isOperatingCFPositive ? '✓' : '✗'}
+                          </span>
+                          <span className="text-gray-400">Operating CF Positive</span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.healthIndicators.isFreeCFPositive !== null && (
+                        <div className="flex items-center gap-2">
+                          <span className={data.annualReport.cashFlow.healthIndicators.isFreeCFPositive ? 'text-green-400' : 'text-red-400'}>
+                            {data.annualReport.cashFlow.healthIndicators.isFreeCFPositive ? '✓' : '✗'}
+                          </span>
+                          <span className="text-gray-400">Free CF Positive</span>
+                        </div>
+                      )}
+                      {data.annualReport.cashFlow.healthIndicators.workingCapitalTrend && (
+                        <div className="flex items-center gap-2">
+                          <span className="text-gray-400">WC Trend:</span>
+                          <span className={
+                            data.annualReport.cashFlow.healthIndicators.workingCapitalTrend === 'Improving' ? 'text-green-400' :
+                            data.annualReport.cashFlow.healthIndicators.workingCapitalTrend === 'Deteriorating' ? 'text-red-400' :
+                            'text-yellow-400'
+                          }>
+                            {renderValue(data.annualReport.cashFlow.healthIndicators.workingCapitalTrend)}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                )}
+                {/* Summary Paragraph */}
+                {data.annualReport.cashFlow.summary && (
+                  <div className="bg-gray-800/30 rounded-lg p-4">
+                    <h5 className="text-sm font-semibold text-cyan-300 mb-2">Analysis</h5>
+                    <p className="text-xs text-gray-300 leading-relaxed whitespace-pre-line">
+                      {data.annualReport.cashFlow.summary}
+                    </p>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
       )}
-    </div>
-  );
-}
+</div>
+  )}
 

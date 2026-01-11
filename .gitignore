@@ -49,3 +49,8 @@ PERPLEXITY_OLLAMA_HYBRID.md
 # Generated Excel files
 /public/exports/balance-sheets/*.xlsx
 
+.cache/pdfs/KRBL-FY2026.txt
+.cache/pdfs/ADVENZYMES-FY2026.txt
+.cache/pdfs/MRF-FY2026.txt
+.cache/pdfs/RELIANCE-FY2026.txt
+.cache/pdfs/RELIANCE-FY2026.txt

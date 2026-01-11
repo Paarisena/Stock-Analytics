@@ -4,7 +4,6 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import axios from "axios";
 import ReactMarkdown from 'react-markdown';
 import DataVisualizer from './components/DataVisualizer';
-import WeatherCard from './components/WeatherCard';
 import StockCard from './components/StockCard';
 
 interface Message {
@@ -504,9 +503,6 @@ export default function Home() {
                           {/* Visualization */}
                           {message.visualization && (
                             <>
-                              {message.visualization.type === 'weather' && (
-                                <WeatherCard data={message.visualization.data} />
-                              )}
                               {message.visualization.type === 'stock' && (
                                 <StockCard data={message.visualization.data} />
                               )}

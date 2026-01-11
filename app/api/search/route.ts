@@ -178,6 +178,8 @@ async function mcpGetIndianFundamentals(symbol: string, skipAI: boolean = false)
                 const { fetchScreenerFundamentals } = await import('../../utils/screenerScraper');
                 const screenerData = await fetchScreenerFundamentals(cleanSymbol);
                 
+                
+                
                 if (screenerData && screenerData.peRatio) {
                     console.log(`? [Screener.in] Got fundamentals from authenticated account (HIGHEST QUALITY)`);
                     console.log(`?? [Sample] PE=${screenerData.peRatio}, ROE=${screenerData.roe}, D/E=${screenerData.debtToEquity}, OPM=${screenerData.operatingMargin}`);
@@ -529,9 +531,13 @@ async function mcpGetIndianComprehensiveData(symbol: string) {
         console.log(`🔐 [Screener.in] Fetching comprehensive data for ${cleanSymbol}...`);
         console.log(`📊 [Strategy] Cookie-authenticated scraping → BSE India PDF parsing`);
         
+        
         // Fetch from Screener.in with authenticated session
         const { fetchScreenerComprehensiveData } = await import('../../utils/screenerScraper');
         const screenerData = await fetchScreenerComprehensiveData(symbol);
+        console.log('🔍 [DEBUG] screenerData keys:', Object.keys(screenerData));
+        console.log('🔍 [DEBUG] screenerData.annualReport exists:', !!screenerData.annualReport);
+        console.log('🔍 [DEBUG] screenerData.annualReport:', screenerData.annualReport ? `FY${screenerData.annualReport.fiscalYear}, ${screenerData.annualReport.content?.length || 0} chars` : 'NULL');
         
         let transcript = '';
         let quarter = 'Unknown';
@@ -728,7 +734,7 @@ async function mcpGetIndianComprehensiveData(symbol: string) {
 
         // Extract structured insights from annual report using AI
         let annualReportInsights = null;
-        if (annualReport && annualReport.length > 50000) {
+        if (annualReport && annualReport.length > 0) {
             console.log(`🔍 [AI] Extracting structured insights from annual report (OCR'd text)...`);
             
             // Debug: Log sample of text being sent
@@ -746,7 +752,7 @@ async function mcpGetIndianComprehensiveData(symbol: string) {
             ];
             
             liabSearchPatterns.forEach(({ name, pattern }) => {
-                const matches = annualReport.substring(0, 50000).match(pattern);
+                const matches = annualReport.substring(0, 0).match(pattern);
                 if (matches && matches.length > 0) {
                     console.log(`   ✅ "${name}" found (${matches.length} matches):`, matches.slice(0, 2)); // Show first 2
                 } else {
@@ -757,12 +763,8 @@ async function mcpGetIndianComprehensiveData(symbol: string) {
             try {
                 const extractionPrompt = `⚠️⚠️⚠️ CRITICAL: READ AND EXTRACT FROM THE ACTUAL DOCUMENT BELOW ⚠️⚠️⚠️
 
-DO NOT USE EXAMPLE NUMBERS FROM INSTRUCTIONS! EVERY COMPANY HAS DIFFERENT DATA!
-YOU MUST EXTRACT THE REAL NUMBERS FROM THE ACTUAL DOCUMENT TEXT PROVIDED BELOW!
-
-==================== START OF ACTUAL DOCUMENT TO ANALYZE ====================
+const extractionPrompt = Extract from Indian annual report:
 ${annualReport.substring(0, 2000000)}
-==================== END OF ACTUAL DOCUMENT ====================
 
 ⚠️ THE DOCUMENT TEXT ABOVE CONTAINS THE REAL DATA YOU MUST EXTRACT
 ⚠️ EXAMPLES IN INSTRUCTIONS BELOW ARE ONLY TO SHOW THE PATTERN
@@ -1254,8 +1256,77 @@ Provide response in this EXACT JSON format:
     },
     "analysis": "Provide detailed financial analysis IF you successfully extracted and validated balance sheet data. IF validation failed: state 'Detailed Balance Sheet not available in expected format.'"
   },
-  "keyRisks": ["Risk 1 from document", "Risk 2 from document", "Risk 3 from document"],
-  "keyOpportunities": ["Opportunity 1 from document", "Opportunity 2 from document", "Opportunity 3 from document"],
+  "cashFlow": {
+    "summary": "IF you successfully found and validated Consolidated Cash Flow Statement: Write ONE comprehensive paragraph (350-450 words) covering: 1) Operating cash flow with YoY % change and comparison to profit, 2) Major working capital movements (inventory, receivables, payables changes), 3) Investing activities breakdown - Capex amount and YoY change, acquisitions/investments if any, 4) Financing activities - debt raised/repaid, dividends paid, equity raised if any, 5) Free Cash Flow calculation (Operating CF - Capex) with YoY change, 6) Net cash position change and closing cash balance, 7) Cash conversion ratio (Operating CF / Net Profit). IF validation failed: Write 'Cash Flow Statement not available in expected format.'",
+    
+    "operatingActivities": {
+      "profitBeforeTax": { "current": null, "previous": null },  // Extract from section A
+      "operatingProfitBeforeWC": { "current": null, "previous": null },  // After adjustments, before WC changes
+      "cashGeneratedFromOperations": { "current": null, "previous": null },  // After WC changes
+      "taxesPaid": { "current": null, "previous": null },  // Negative number
+      "netCashFromOperating": { "current": null, "previous": null }  // Final line of section A
+    },
+    
+    "workingCapitalChanges": {
+      "inventoryChange": { "current": null, "previous": null },  // Negative = increase
+      "receivablesChange": { "current": null, "previous": null },  // Negative = increase
+      "payablesChange": { "current": null, "previous": null },  // Positive = increase
+      "otherWCChanges": { "current": null, "previous": null }  // Net of other items
+    },
+    
+    "investingActivities": {
+      "capexPPE": { "current": null, "previous": null },  // Negative number
+      "capexIntangibles": { "current": null, "previous": null },  // Negative number
+      "totalCapex": { "current": null, "previous": null },  // Sum of above (negative)
+      "investmentsPurchased": { "current": null, "previous": null },  // Negative
+      "investmentsSold": { "current": null, "previous": null },  // Positive
+      "interestReceived": { "current": null, "previous": null },
+      "dividendReceived": { "current": null, "previous": null },
+      "netCashFromInvesting": { "current": null, "previous": null }  // Final line of section B (usually negative)
+    },
+    
+    "financingActivities": {
+      "borrowingsProceeds": { "current": null, "previous": null },  // Positive inflow
+      "borrowingsRepayment": { "current": null, "previous": null },  // Negative outflow
+      "netBorrowingChange": { "current": null, "previous": null },  // Calculate: proceeds - repayment
+      "interestPaid": { "current": null, "previous": null },  // Negative
+      "dividendsPaid": { "current": null, "previous": null },  // Negative
+      "equityIssued": { "current": null, "previous": null },  // If present, positive
+      "netCashFromFinancing": { "current": null, "previous": null }  // Final line of section C
+    },
+    
+    "reconciliation": {
+      "netCashChange": { "current": null, "previous": null },  // A + B + C
+      "openingCash": { "current": null, "previous": null },
+      "closingCash": { "current": null, "previous": null },  // Must equal: opening + net change
+      "validationPassed": false  // Set to true if reconciliation matches
+    },
+    
+    "derivedMetrics": {
+      "freeCashFlow": { "current": null, "previous": null },  // Operating CF - Total Capex
+      "cashConversionRatio": { "current": null, "previous": null },  // Operating CF / Profit After Tax (from P&L)
+      "capexAsPercentOfRevenue": { "current": null, "previous": null },  // (Total Capex / Revenue) * 100
+      "dividendPayoutRatio": { "current": null, "previous": null }  // (Dividends Paid / Profit After Tax) * 100
+    },
+    
+    "yoyComparison": {
+      "operatingCashFlow": { "change": null, "changePercent": null },
+      "investingCashFlow": { "change": null, "changePercent": null },
+      "financingCashFlow": { "change": null, "changePercent": null },
+      "freeCashFlow": { "change": null, "changePercent": null },
+      "closingCash": { "change": null, "changePercent": null }
+    },
+    
+    "healthIndicators": {
+      "isOperatingCFPositive": null,  // true/false
+      "isFreeCFPositive": null,  // true/false
+      "cashFlowQuality": null,  // "Excellent" if Operating CF > PAT, "Good" if 70-100%, "Weak" if <70%
+      "workingCapitalTrend": null,  // "Improving" if WC changes are favorable, "Deteriorating" otherwise
+      "debtServiceAbility": null  // "Strong" if Operating CF > (Interest + Debt Repayment), else "Weak"
+    },
+    
+    "analysis": "Provide detailed cash flow analysis IF you successfully extracted data. Discuss: 1) Quality of earnings (CF vs profit), 2) Working capital efficiency, 3) Capex intensity and growth investments, 4) Debt servicing capability, 5) Dividend sustainability, 6) Free cash flow adequacy. IF extraction failed: state 'Cash Flow Statement not available in expected format.'"
+  },
   "remuneration": {
   "fiscalYear": "FY 2024-25",
   "currencyUnit": "Lakhs|Crores",
@@ -1486,6 +1557,7 @@ Provide response in this EXACT JSON format:
     }
   }
 }
+    
 
 }       
 
@@ -1750,11 +1822,196 @@ Principal auditor summarizes in Annexure A
 Watch for subsidiaries whose CARO is delayed/missing
 
 
+7. CASH FLOW STATEMENT EXTRACTION FROM THE DOCUMENT ABOVE (minimum 400 words):
 
+⚠️⚠️⚠️ MANDATORY: ONLY EXTRACT CONSOLIDATED CASH FLOW - REJECT STANDALONE ⚠️⚠️⚠️
+
+🚫 CRITICAL REJECTION RULES:
+❌ Immediately SKIP any heading with "Standalone Cash Flow Statement"
+❌ Immediately SKIP any heading with "Standalone Statement of Cash Flows"
+❌ DO NOT extract from Standalone under any circumstances
+
+✅ ONLY EXTRACT FROM:
+1. Heading MUST say "Consolidated Statement of Cash Flows" OR "Consolidated Cash Flow Statement"
+2. Verify word "Consolidated" appears in section heading
+3. Usually appears AFTER Consolidated Balance Sheet and P&L sections
+
+🔍 MANDATORY SEARCH STRATEGY:
+Step 1: Search document for "Consolidated Statement of Cash Flows" or "Consolidated Cash Flow Statement"
+Step 2: If you find "Standalone" version first (common in annual reports):
+       → ❌ IGNORE completely - do NOT extract
+       → ⏩ Continue searching for Consolidated version
+Step 3: Only when heading explicitly says "Consolidated":
+       → ✅ Verify "Consolidated" word is present
+       → ✅ Confirm it's NOT Standalone
+       → ✅ Proceed with extraction
+
+⚠️ FIND THE CORRECT "Cash Flow Statement" TABLE:
+
+TEXTUAL LANDMARKS TO LOCATE CORRECT SECTION:
+
+1️⃣ SKIP these wrong sections:
+   ❌ Any "Standalone Cash Flow Statement" - SKIP IMMEDIATELY
+   ❌ Summary tables or highlights sections
+   ❌ Segment-wise cash flow breakdowns
+   ❌ Tables in MD&A with cash flow metrics
+
+2️⃣ FIND the correct heading:
+   ✅ MUST have "Consolidated Statement of Cash Flows" OR "Consolidated Cash Flow Statement"
+   ✅ Verify "Consolidated" is visible (NOT Standalone)
+   ✅ Look for unit indicator: "(₹ in Crore)" OR "(In ₹ Lakhs)" immediately after heading
+   ✅ Column headers: "Particulars  Note  Year ended March 31, 2025  Year ended March 31, 2024"
+
+3️⃣ VERIFY correct structure BEFORE extracting:
+   ✅ Heading says "Consolidated" (NOT "Standalone")
+   ✅ Three main sections visible:
+      • A. Cash flows from operating activities
+      • B. Cash flows from investing activities
+      • C. Cash flows from financing activities
+   ✅ Each section has detailed line items with two numbers (current year | previous year)
+   ✅ Final lines show:
+      • "Net increase/(decrease) in cash and cash equivalents"
+      • "Cash and cash equivalents at beginning of year"
+      • "Cash and cash equivalents at end of year"
+
+✅ CORRECT CASH FLOW STATEMENT STRUCTURE:
+
+Statement of Cash Flows
+(₹ in Crore) OR (In ₹ Lakhs)
+-------
+Particulars  Note  For the year ended March 31, 2025  March 31, 2024
+-------
+
+A. CASH FLOWS FROM OPERATING ACTIVITIES:
+   Profit before tax                     [num]      [num]
+   Adjustments for:
+     Depreciation and amortization       [num]      [num]
+     Interest income                    ([num])    ([num])
+     Interest expense                    [num]      [num]
+     Dividend income                    ([num])    ([num])
+     [more adjustments...]
+   Operating profit before working capital changes  [num]  [num]
+   
+   Changes in working capital:
+     (Increase)/decrease in inventories            ([num])  [num]
+     (Increase)/decrease in trade receivables      ([num])  [num]
+     Increase/(decrease) in trade payables          [num]  ([num])
+     [more working capital items...]
+   
+   Cash generated from operations                   [num]  [num]
+   Income taxes paid                               ([num]) ([num])
+   Net cash from operating activities (A)           [num]  [num]
+
+B. CASH FLOWS FROM INVESTING ACTIVITIES:
+   Purchase of property, plant and equipment       ([num]) ([num])
+   Purchase of intangible assets                   ([num]) ([num])
+   Proceeds from sale of fixed assets               [num]   [num]
+   Investment in subsidiaries/associates           ([num]) ([num])
+   Purchase of investments                         ([num]) ([num])
+   Sale of investments                              [num]   [num]
+   Interest received                                [num]   [num]
+   Dividend received                                [num]   [num]
+   [more investing items...]
+   Net cash used in investing activities (B)       ([num]) ([num])
+
+C. CASH FLOWS FROM FINANCING ACTIVITIES:
+   Proceeds from issue of equity shares             [num]   [num]
+   Proceeds from borrowings                         [num]   [num]
+   Repayment of borrowings                         ([num]) ([num])
+   Interest paid                                   ([num]) ([num])
+   Dividends paid                                  ([num]) ([num])
+   [more financing items...]
+   Net cash from/(used in) financing activities (C) [num]  ([num])
+
+Net increase/(decrease) in cash and cash equivalents (A+B+C)  [num]  [num]
+Cash and cash equivalents at beginning of year               [num]  [num]
+Cash and cash equivalents at end of year                     [num]  [num]
+
+🔍 VALIDATION CHECKLIST (verify ALL before extracting):
+✅ Has "Consolidated" in heading (NOT "Standalone")
+✅ Has "(₹ in Crore)" or similar unit indicator
+✅ Column header shows TWO years: March 31, 2025 and March 31, 2024
+✅ Three main sections: Operating, Investing, Financing
+✅ Each section has subtotal line
+✅ Numbers in parentheses represent outflows (negative)
+✅ Final reconciliation: Opening balance + Net change = Closing balance
+
+🚨 RED FLAGS - SKIP THESE SECTIONS:
+❌ Only shows one year of data (must have current + previous)
+❌ Missing any of the three main sections (Operating/Investing/Financing)
+❌ Shows quarterly data instead of annual ("Q1 FY25", "Quarter ended")
+❌ Segment-wise cash flow breakdowns (by geography/product)
+❌ Says "Standalone" anywhere in heading
+
+EXTRACTION INSTRUCTIONS:
+
+Extract from the VALIDATED Consolidated Cash Flow Statement table:
+
+A. OPERATING ACTIVITIES:
+   1. "Profit before tax" - Starting point
+   2. Look for "Operating profit before working capital changes" OR "Cash generated from operations before tax"
+   3. Extract "Cash generated from operations" (after working capital adjustments)
+   4. Extract "Income taxes paid" (negative number in parentheses)
+   5. Extract "Net cash from operating activities" (final line of section A)
+
+B. INVESTING ACTIVITIES:
+   1. Extract "Purchase of property, plant and equipment" (Capex - negative in parentheses)
+   2. Extract "Purchase of intangible assets" if present (negative)
+   3. Look for net investments: "Purchase of investments" minus "Sale of investments"
+   4. Extract "Interest received" and "Dividend received"
+   5. Extract "Net cash used in investing activities" (final line of section B - usually negative)
+
+C. FINANCING ACTIVITIES:
+   1. Extract "Proceeds from borrowings" (positive inflow)
+   2. Extract "Repayment of borrowings" (negative outflow in parentheses)
+   3. Extract "Interest paid" (negative in parentheses)
+   4. Extract "Dividends paid" (negative in parentheses)
+   5. Extract "Proceeds from issue of equity shares" if present
+   6. Extract "Net cash from/(used in) financing activities" (final line of section C)
+
+RECONCILIATION:
+   • Extract "Net increase/(decrease) in cash and cash equivalents" (A+B+C)
+   • Extract "Cash and cash equivalents at beginning of year"
+   • Extract "Cash and cash equivalents at end of year"
+   • VERIFY: Beginning + Net change = Ending (must match!)
+
+NUMBER PARSING:
+• Strip ALL commas: "12,345.67" → 12345.67
+• Parentheses mean negative: "(1,234)" → -1234
+• Ignore note references (small numbers < 100)
+• All values in SAME unit (Crores OR Lakhs - check heading)
+
+CRITICAL VALIDATION BEFORE RETURNING:
+1. Cash flow reconciliation:
+   - Opening Cash + (Operating Cash Flow + Investing Cash Flow + Financing Cash Flow) = Closing Cash
+   - Example: 5,000 + (8,000 - 3,000 - 2,000) = 8,000 ✓
+
+2. Operating cash flow reasonableness:
+   - Should be positive for healthy companies
+   - Compare to Profit Before Tax - should be similar magnitude
+   - If Operating CF < 0 while PBT > 0, check for working capital drain
+
+3. Free Cash Flow calculation:
+   - Free Cash Flow = Operating Cash Flow - Capex
+   - Capex = "Purchase of PPE" + "Purchase of intangible assets"
+   - Example: 8,000 - 2,500 = 5,500 FCF ✓
+
+4. Unit consistency:
+   - ALL cash flow values in SAME scale (Crores OR Lakhs)
+   - If Operating CF is 8,234.56, then Investing CF should be ~3,156.23 (same decimal format)
+   - DO NOT mix: Operating CF = 82345.6 with Investing CF = 3156 (different scales)
+
+IF YOU CANNOT FIND "Consolidated Statement of Cash Flows":
+→ ❌ DO NOT extract from Standalone
+→ ❌ DO NOT calculate or estimate
+→ Return: "Consolidated Cash Flow Statement not found in document"
+→ Set all cashFlow values to null
+→ Continue with other extractions
+i need thses prompt without missing in minimal
 
 `;
 
-                const insightsResponse = await callGeminiAPI(extractionPrompt, { temperature: 0.3, maxTokens: 8000 });
+                const insightsResponse = await callGeminiAPI(extractionPrompt, { temperature: 0.2, maxTokens: 200000 });
                 
                 // Debug: Log raw Gemini response
                 console.log(`📝 [Gemini Raw Response] Length: ${insightsResponse?.length || 0} chars`);
@@ -1768,11 +2025,95 @@ Watch for subsidiaries whose CARO is delayed/missing
                     }
                 }
                 
-                const extractedInsights = extractJSON(insightsResponse);
-                if (extractedInsights) {
-                    // CRITICAL VALIDATION: Check if Gemini extracted Assets as Liabilities
-                    // This happens when it matches "Total equity and liabilities" instead of "Total liabilities"
-                    if (extractedInsights.balanceSheet?.assets?.totalAssets?.current &&
+                let extractedInsights = extractJSON(insightsResponse);
+                console.log(`🔍 [DEBUG] extractedInsights:`, extractedInsights ? 'SUCCESS' : 'NULL - JSON parsing failed');
+           if (!extractedInsights) {
+    console.error(`❌ [JSON Parse] Failed to parse Gemini response`);
+    console.error(`📄 [Response Length]:`, insightsResponse?.length);
+    
+    const cleaned = insightsResponse.replace(/```json\s*/gi, '').replace(/```\s*$/g, '').trim();
+    const endsWithClosingBrace = cleaned.endsWith('}');
+    
+    if (!endsWithClosingBrace) {
+        console.error(`⚠️ [Truncation Detected] Attempting simple recovery without audit...`);
+        
+        const auditStart = cleaned.lastIndexOf('"auditInformation"');
+        
+        if (auditStart > 0) {
+            // SIMPLE STRATEGY: Find "keyOpportunities" field (before remuneration)
+            // This is more reliable as it's always a simple array, not a complex object
+            const opportunitiesEnd = cleaned.lastIndexOf('"keyOpportunities"');
+            
+            if (opportunitiesEnd > 0 && opportunitiesEnd < auditStart) {
+                // Find the closing bracket of keyOpportunities array
+                let bracketCount = 0;
+                let foundOpenBracket = false;
+                let arrayClose = -1;
+                
+                for (let i = opportunitiesEnd; i < auditStart; i++) {
+                    if (cleaned[i] === '[') {
+                        foundOpenBracket = true;
+                        bracketCount++;
+                    } else if (cleaned[i] === ']') {
+                        bracketCount--;
+                        if (foundOpenBracket && bracketCount === 0) {
+                            arrayClose = i;
+                            break;
+                        }
+                    }
+                }
+                
+                if (arrayClose > 0) {
+                    // Cut right after the keyOpportunities array closes
+                    // This gives us everything except remuneration and audit
+                    let salvaged = cleaned.substring(0, arrayClose + 1);
+                    
+                    // Simply close the root object
+                    salvaged += '\n}';
+                    
+                    console.log(`✂️ [Cut after] keyOpportunities field`);
+                    
+                    try {
+                        const salvagedData = JSON.parse(salvaged);
+                        console.log(`✅ [Salvage Success] Recovered ${Object.keys(salvagedData).length} sections`);
+                        console.log(`📊 [Recovered]:`, Object.keys(salvagedData).join(', '));
+                        
+                        // Add placeholders for missing sections with explanatory notes
+                        // salvagedData.remuneration = {
+                        //     note: "Section exceeded Gemini's 8K token output limit (~30KB response truncation). Consider requesting separate detailed remuneration report.",
+                        //     fiscalYear: salvagedData.fiscalYear || null,
+                        //     available: false
+                        // };
+                        
+                        // salvagedData.auditInformation = {
+                        //     available: false,
+                        //     note: "Section exceeded Gemini's 8K token output limit (~30KB response truncation). Partial audit data may exist in original PDF. Consider requesting separate detailed audit report.",
+                        //     companyName: salvagedData.companyName || null,
+                        //     fiscalYear: salvagedData.fiscalYear || null
+                        // };
+                        
+                        // CRITICAL FIX: Assign to extractedInsights so it continues through validation
+                        extractedInsights = salvagedData;
+                        console.log(`🔄 [Salvage] Assigned salvaged data to extractedInsights - continuing through normal validation flow`);
+                    } catch (e: any) {
+                        console.error(`❌ [Simple Salvage Failed]:`, e.message);
+                        console.error(`🔍 [Error Context]:`, e.message.includes('position') ? salvaged.substring(Math.max(0, parseInt(e.message.match(/\d+/)?.[0] || '0') - 50), parseInt(e.message.match(/\d+/)?.[0] || '0') + 50) : 'N/A');
+                    }
+                }
+            }
+            
+            if (!extractedInsights) {
+                console.error(`⚠️ [Ultimate Fallback] Could not salvage data - returning null`);
+            }
+        }
+    }
+}
+
+// Continue with original validation flow - extractedInsights now contains salvaged data
+if (extractedInsights) {
+    // CRITICAL VALIDATION: Check if Gemini extracted Assets as Liabilities
+    // This happens when it matches "Total equity and liabilities" instead of "Total liabilities"
+    if (extractedInsights.balanceSheet?.assets?.totalAssets?.current &&
                         extractedInsights.balanceSheet?.liabilities?.totalLiabilities?.current) {
                         
                         const assets = extractedInsights.balanceSheet.assets.totalAssets.current;
@@ -1964,6 +2305,7 @@ Watch for subsidiaries whose CARO is delayed/missing
         return {
             transcript: '',
             annualReport: '',
+            annualReportInsights: null,
             fromCache: false,
             quarter: 'Unknown',
             source: 'Error',
@@ -2047,6 +2389,9 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
             try {
                 comprehensiveData = await mcpGetIndianComprehensiveData(symbol);
                 console.log(`✅ [Comprehensive] Got data from ${comprehensiveData.source}`);
+               console.log(`🔍 [DEBUG] comprehensiveData keys:`, Object.keys(comprehensiveData || {}));
+               console.log(`🔍 [DEBUG] annualReportInsights exists:`, !!comprehensiveData?.annualReportInsights);
+               console.log(`🔍 [DEBUG] annualReportInsights value:`, comprehensiveData?.annualReportInsights);
             } catch (compError: any) {
                 console.warn(`⚠️ [Comprehensive] Failed: ${compError.message}`);
             }
@@ -2159,7 +2504,7 @@ Provide detailed analysis in this EXACT JSON format:
             try {
                 // Use Gemini only (FREE with large context window)
                 console.log(`🤖 [Gemini] Generating AI predictions...`);
-                const aiResponse = await callGeminiAPI(analysisPrompt, { temperature: 0.3, maxTokens: 4000 });
+                const aiResponse = await callGeminiAPI(analysisPrompt, { temperature: 0.2, maxTokens: 10000 });
                 console.log(`✅ [Gemini] Response received (${aiResponse.length} chars)`);
                 
                 // extractJSON returns parsed object directly, not a string
@@ -2270,11 +2615,11 @@ Provide detailed analysis in this EXACT JSON format:
         businessModel: comprehensiveData.annualReportInsights.businessModel,
         futureStrategy: comprehensiveData.annualReportInsights.futureStrategy,
         keyHighlights: comprehensiveData.annualReportInsights.keyHighlights,
-        risks: comprehensiveData.annualReportInsights.keyRisks,
-        opportunities: comprehensiveData.annualReportInsights.keyOpportunities,
         balanceSheet: comprehensiveData.annualReportInsights.balanceSheet,
+        cashFlow: comprehensiveData.annualReportInsights.cashFlow,
         remuneration: comprehensiveData.annualReportInsights.remuneration,
         auditInformation: comprehensiveData.annualReportInsights.auditInformation,
+
         source: comprehensiveData.source || 'BSE India',
         fromCache: comprehensiveData.fromCache
     }

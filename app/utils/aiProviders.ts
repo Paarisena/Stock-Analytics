@@ -132,9 +132,9 @@ export async function callGeminiSearch(
     options: GeminiSearchOptions = {}
 ): Promise<GeminiSearchResult> {
     const {
-        model = 'gemini-2.0-flash',
+        model = 'gemini-2.5-flash',
         temperature = 0.2,
-        maxTokens = 16000
+        maxTokens = 10000,
     } = options;
 
     try {
@@ -199,9 +199,9 @@ export async function callGeminiAPI<T = string>(
     options: GeminiAIOptions<T> = {}
 ): Promise<T> {
     const {
-        model = 'gemini-2.0-flash',
+        model = 'gemini-2.5-flash',
         temperature = 0.2,
-        maxTokens = 16000,
+        maxTokens = 10000,
         parser
     } = options;
 
