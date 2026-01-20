@@ -1,16 +1,11 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/DB/MongoDB";
-import SearchHistory from "@/DB/Model";
-import { SearchResponse, SearchRequest, PerplexityResponse } from "@/DB/interface";
-import { extractTextFromPDF } from '../../utils/geminiVision';
+import {AnnualReportCache,QuarterlyReportCache} from "@/DB/Model";
 import OpenAI from "openai";
-import * as XLSX from 'xlsx';
-import { writeFileSync, mkdirSync } from 'fs';
-import { join } from 'path';
-import { GoogleGenerativeAI } from "@google/generative-ai";
+
 import Groq from "groq-sdk";
 import { CacheManager } from '@/app/utils/cache';
-import { perplexity, groq, gemini, callPerplexityAPI, callGroqAPI, callPerplexityBatch, callGeminiSearch, callGeminiAPI } from '@/app/utils/aiProviders';
+import { gemini,  callGeminiAPI } from '@/app/utils/aiProviders';
 import { 
     parseKeyValueText, 
     parseValue, 
@@ -478,292 +473,387 @@ async function mcpGetFundamentals(symbol: string, skipAI: boolean = false) {
 }
 
 // ========================
-// MCP TOOL: EARNINGS TRANSCRIPT ANALYSIS (FMP + Perplexity)
+// HELPER: EXTRACT QUARTERLY INSIGHTS (FOR SCREENER.IN)
+// ========================
+async function extractQuarterlyInsights(
+    cleanSymbol: string,
+    rawTranscript: string,
+    quarter: string,
+    fiscalYear?: string
+): Promise<any> {
+    console.log(`🔍 [AI Quarterly] Extracting insights for ${quarter}...`);
+    
+    // Parse the JSON data from table extraction
+    let parsedData: any;
+    try {
+        parsedData = JSON.parse(rawTranscript);
+    } catch (parseError) {
+        console.error(`❌ [Quarterly] Failed to parse table data:`, parseError);
+        return null;
+    }
+    
+    // Calculate expense ratio for context
+    const expenseRatio = parsedData.expenses.total > 0 
+        ? ((parsedData.expenses.total / parsedData.keyMetrics.revenue.value) * 100).toFixed(2)
+        : 'N/A';
+    
+    const interestCoverage = parsedData.expenses.interest > 0 
+        ? (parsedData.keyMetrics.operatingProfit.value / parsedData.expenses.interest).toFixed(2)
+        : 'N/A';
+    
+    const quarterlyPrompt = `You are analyzing CONSOLIDATED quarterly financial data from Screener.in for ${cleanSymbol}.
+
+**CRITICAL CONTEXT:**
+- Data Source: Screener.in Quarterly Results Table (CONSOLIDATED FIGURES ONLY)
+- Latest Quarter: ${parsedData.quarter}
+- Historical Period: ${parsedData.quarters.length} quarters (${parsedData.quarters[0]} to ${parsedData.quarters[parsedData.quarters.length - 1]})
+- All values in ₹ Crores
+
+**QUARTERLY PERFORMANCE SERIES:**
+${parsedData.quarters.map((q: string, i: number) => 
+  `${q}: Sales ₹${parsedData.historicalData.sales[i]}Cr | Net Profit ₹${parsedData.historicalData.netProfit[i]}Cr | OPM ${parsedData.historicalData.opm[i]}% | EPS ₹${parsedData.historicalData.eps[i]}`
+).join('\n')}
+
+**LATEST QUARTER HIGHLIGHTS (${parsedData.quarter}):**
+- Revenue: ₹${parsedData.keyMetrics.revenue.value}Cr (YoY: ${parsedData.keyMetrics.revenue.yoyGrowth}%, QoQ: ${parsedData.keyMetrics.revenue.qoqGrowth}%)
+- Net Profit: ₹${parsedData.keyMetrics.netProfit.value}Cr (YoY: ${parsedData.keyMetrics.netProfit.yoyGrowth}%, QoQ: ${parsedData.keyMetrics.netProfit.qoqGrowth}%)
+- Operating Profit: ₹${parsedData.keyMetrics.operatingProfit.value}Cr (Margin: ${parsedData.financialRatios.operatingMargin}%)
+- EPS: ₹${parsedData.keyMetrics.eps.value} (YoY: ${parsedData.keyMetrics.eps.yoyGrowth}%)
+- Expense Ratio: ${expenseRatio}%
+- Interest Coverage: ${interestCoverage}x
+
+**ANALYSIS TASK:**
+Analyze the ${parsedData.quarters.length}-quarter trend and provide actionable investment insights. Focus on:
+1. Revenue momentum (accelerating/decelerating?)
+2. Profitability trends (margins expanding/compressing?)
+3. Operational efficiency (expense control, operating leverage)
+4. Quarter-over-quarter consistency vs volatility
+5. Seasonal patterns (if any)
+
+**OUTPUT FORMAT (JSON only, no markdown):**
+{
+  "quarter": "${parsedData.quarter}",
+  "keyMetrics": {
+    "revenue": {
+      "value": ${parsedData.keyMetrics.revenue.value},
+      "yoyGrowth": ${parsedData.keyMetrics.revenue.yoyGrowth},
+      "qoqGrowth": ${parsedData.keyMetrics.revenue.qoqGrowth},
+      "unit": "Crores",
+      "trend": "Accelerating|Stable|Decelerating",
+      "analysis": "1-2 sentences: Compare last 2 quarters vs previous 2 quarters. Is momentum improving?"
+    },
+    "netProfit": {
+      "value": ${parsedData.keyMetrics.netProfit.value},
+      "yoyGrowth": ${parsedData.keyMetrics.netProfit.yoyGrowth},
+      "qoqGrowth": ${parsedData.keyMetrics.netProfit.qoqGrowth},
+      "unit": "Crores",
+      "trend": "Improving|Stable|Declining",
+      "analysis": "1-2 sentences: Is profit growing faster/slower than revenue? What does this mean?"
+    },
+    "operatingProfit": {
+      "value": ${parsedData.keyMetrics.operatingProfit.value},
+      "yoyGrowth": ${parsedData.keyMetrics.operatingProfit.yoyGrowth},
+      "qoqGrowth": ${parsedData.keyMetrics.operatingProfit.qoqGrowth},
+      "unit": "Crores"
+    },
+    "eps": {
+      "value": ${parsedData.keyMetrics.eps.value},
+      "yoyGrowth": ${parsedData.keyMetrics.eps.yoyGrowth},
+      "qoqGrowth": ${parsedData.keyMetrics.eps.qoqGrowth}
+    },
+    "operatingMargin": ${parsedData.financialRatios.operatingMargin},
+    "netMargin": ${parsedData.financialRatios.netMargin}
+  },
+  "managementCommentary": {
+    "businessHighlights": [
+      "Concrete data point: e.g., 'Revenue grew 15% YoY driven by...'",
+      "Margin trend: e.g., 'OPM expanded from X% to Y% due to...'",
+      "Efficiency gain: e.g., 'Expense-to-revenue ratio improved to X%'"
+    ],
+    "challenges": [
+      "Only if evident from data: e.g., 'Net margin compressed to X% from Y%'",
+      "Only if growth slowed: e.g., 'QoQ revenue growth decelerated to X% from Y%'"
+    ],
+    "opportunities": [
+      "Based on positive trends: e.g., 'Consistent margin expansion suggests pricing power'",
+      "Based on efficiency: e.g., 'Operating leverage visible - expenses growing slower than revenue'"
+    ],
+    "futureGuidance": [
+      "Momentum-based: e.g., 'Strong YoY growth of X% suggests sustained demand'",
+      "Seasonality-based: e.g., 'Q3 historically strong - expect similar pattern'"
+    ]
+  },
+  "segmentPerformance": [
+    {
+      "segment": "Core Business",
+      "revenue": null,
+      "growth": "Describe overall revenue trend",
+      "margin": ${parsedData.financialRatios.operatingMargin},
+      "commentary": "Is operating leverage visible? Are expenses (₹${parsedData.expenses.total}Cr) growing slower than revenue?"
+    }
+  ],
+  "financialRatios": {
+    "operatingMargin": ${parsedData.financialRatios.operatingMargin},
+    "netMargin": ${parsedData.financialRatios.netMargin},
+    "expenseToRevenueRatio": ${expenseRatio},
+    "interestCoverageRatio": ${interestCoverage},
+    "taxRate": ${parsedData.financialRatios.taxRate || 'null'}
+  },
+  "cashFlow": {
+    "operatingCashFlow": null,
+    "freeCashFlow": null,
+    "capex": null,
+    "cashAndEquivalents": null,
+    "analysis": "Comment on: (1) Interest expense trend (₹${parsedData.expenses.interest}Cr) - is debt burden manageable? (2) Depreciation (₹${parsedData.expenses.depreciation}Cr) - is this a high capex business?"
+  },
+  "outlook": {
+    "sentiment": "Positive|Neutral|Negative",
+    "confidenceLevel": "High|Medium|Low",
+    "keyDrivers": [
+      "Data-driven: e.g., 'YoY revenue CAGR of X% over last 4 quarters'",
+      "Margin-based: e.g., 'OPM expansion from X% to Y% indicates operational efficiency'"
+    ],
+    "risks": [
+      "Only if visible: e.g., 'Expenses growing at X% vs revenue growth of Y%'",
+      "Only if declining: e.g., 'QoQ net profit declined X% suggesting margin pressure'"
+    ],
+    "seasonality": "Analyze ${parsedData.quarters.length} quarters: Is there a Q1/Q2/Q3/Q4 pattern? Which quarters historically stronger?",
+    "nextQuarterExpectation": "Based on last 2 quarters momentum and historical seasonal pattern, what range of performance expected?"
+  },
+  "competitivePosition": {
+    "marketShare": "Unknown",
+    "competitiveAdvantages": [
+      "Margin-based: e.g., 'Consistently high OPM of ${parsedData.financialRatios.operatingMargin}% suggests competitive moat'",
+      "Growth-based: e.g., 'Revenue CAGR outpacing industry average'"
+    ],
+    "industryTrends": [
+      "Infer from company trend: e.g., 'Accelerating revenue suggests strong sector demand'",
+      "Infer from margins: e.g., 'Stable margins indicate rational competition'"
+    ],
+    "operatingLeverage": "Calculate: Expense growth rate vs Revenue growth rate over last 4 quarters. Positive leverage = expenses growing slower."
+  },
+  "historicalTrends": {
+    "bestQuarter": "Which quarter had highest net profit? How much?",
+    "worstQuarter": "Which quarter had lowest net profit? How much?",
+    "peakToTrough": "Calculate % difference between best and worst quarters",
+    "consistencyScore": "High (if volatility <15%) | Medium (15-30%) | Low (>30%)",
+    "seasonalPattern": "Analyze Q1 vs Q2 vs Q3 vs Q4 average performance. Any clear pattern?"
+  },
+  "summary": "4-5 sentences covering: (1) Latest quarter vs historical average, (2) Margin trajectory (expanding/stable/compressing), (3) Growth momentum (accelerating/decelerating), (4) Key risk/opportunity, (5) Investment implication (bullish/neutral/bearish with specific reason)"
+}
+
+**STRICT RULES:**
+1. Use ONLY the ${parsedData.quarters.length} quarters of data provided above
+2. YoY = compare with quarter 4 positions back, QoQ = compare with immediate previous quarter
+3. All growth calculations must cite specific numbers (e.g., "grew from ₹X to ₹Y")
+4. If data point not available, use null (not "N/A" or "Unknown" in number fields)
+5. Trend analysis must compare recent 2 quarters vs previous 2 quarters
+6. Return ONLY valid JSON - no markdown wrappers, no backticks, no extra text
+7. Focus on CONSOLIDATED data - this is the accurate company-wide performance
+8. All analysis must be data-driven with specific percentages and values
+
+Begin analysis now.`;
+
+    try {
+        const result = await callGeminiAPI(quarterlyPrompt, {
+            temperature: 0.2,
+            maxTokens: 15000
+        });
+
+        // ✅ FIX: Strip markdown code blocks before parsing
+        let cleanedResult = result.trim();
+        
+        // Remove ```json or ``` wrappers
+        if (cleanedResult.startsWith('```json')) {
+            cleanedResult = cleanedResult.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '');
+        } else if (cleanedResult.startsWith('```')) {
+            cleanedResult = cleanedResult.replace(/^```\s*\n?/, '').replace(/\n?```\s*$/, '');
+        }
+        
+        console.log(`📝 [AI Quarterly] Cleaned response (first 200 chars):`, cleanedResult.substring(0, 200));
+
+        const quarterlyInsights = JSON.parse(cleanedResult);
+        console.log(`✅ [AI Quarterly] Extraction complete for ${quarter}`);
+        console.log(`🔍 [DEBUG Quarterly] Keys extracted:`, Object.keys(quarterlyInsights || {}));
+        console.log(`🔍 [DEBUG Quarterly] Has keyMetrics:`, !!quarterlyInsights?.keyMetrics);
+        
+        // Save to MongoDB
+        try {
+            await connectToDatabase();
+            const extractedFiscalYear = fiscalYear || quarter.match(/FY(\d+)/)?.[1] || new Date().getFullYear().toString();
+            
+            await QuarterlyReportCache.findOneAndUpdate(
+                { symbol: cleanSymbol, quarter: quarter, fiscalYear: extractedFiscalYear },
+                {
+                    $set: {
+                        data: quarterlyInsights,
+                        rawTranscript: rawTranscript,
+                        source: 'Screener.in Consolidated Table',
+                        fetchedAt: new Date(),
+                        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+                    }
+                },
+                { upsert: true }
+            );
+            console.log(`💾 [MongoDB Quarterly] Saved ${quarter} (90d TTL)`);
+        } catch (dbSaveError: any) {
+            console.warn(`⚠️ [MongoDB Quarterly] Save failed: ${dbSaveError.message}`);
+        }
+        
+        return quarterlyInsights;
+        
+    } catch (extractError: any) {
+        console.error(`❌ [AI Quarterly] Extraction failed:`, extractError.message);
+        console.error(`   Stack:`, extractError.stack);
+        return null;
+    }
+}
+
+ // ========================
+// HELPER: EXTRACT QUARTERLY INSIGHTS (Separate function to avoid token limit issues)
 // ========================
 
-// ========================
-// BATCH PERPLEXITY: INDIAN TRANSCRIPT + ANNUAL REPORT (Combined for cost savings)
-// ========================
-
-/**
- * Generate Excel file with consolidated balance sheet data
- * Creates 3 sheets: Balance Sheet, Profit & Loss, Ratios & Analysis
- */
-
-
-
-/**
- * Fetch both quarterly transcript AND annual report
- * Phase 0: Try Screener.in Direct (BEST - if credentials available)
- * Phase 1: Try Gemini Search (FREE with Google Search grounding)
- * Phase 2: Fallback to Perplexity (Paid)
- * Cost savings: $0.010 ? $0.000 (100% when Gemini succeeds)
- */
-/**
- * Fetch comprehensive data (quarterly transcripts + annual reports) from Screener.in
- * ONLY uses authenticated Screener.in with cookie/parser for BSE India PDFs
- * NO fallbacks to Gemini or Perplexity
- */
-async function mcpGetIndianComprehensiveData(symbol: string) {
+async function mcpGetIndianComprehensiveData(
+    symbol: string, 
+    forceRefresh: boolean = false,
+    forceRefreshQuarterly: boolean = false
+) {
     const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
     
     try {
-        // Check cache first
-        const cached = batchDataCache.get(cleanSymbol, CACHE_DURATION_TRANSCRIPT);
-        if (cached) {
-            console.log(`💾 [Cache HIT] ${cleanSymbol}`);
+        // ============================================
+        // PHASE 1: CHECK MONGODB CACHE FOR ANNUAL REPORT
+        // ============================================
+        let annualReportInsights = null;
+        let annualFromCache = false;
+        
+        if (!forceRefresh) {
+            await connectToDatabase();
+            try { 
+                const cachedReport = await AnnualReportCache.findOne({
+                    symbol: cleanSymbol,
+                    reportType: 'Consolidated',
+                    expiresAt: { $gt: new Date() }
+                }).sort({ fiscalYear: -1 }).limit(1);
+                
+                if (cachedReport) {
+                    const ageInDays = Math.floor((Date.now() - cachedReport.fetchedAt.getTime()) / (1000 * 60 * 60 * 24));
+                    console.log(`✅ [MongoDB Annual] Cache HIT for ${cleanSymbol} FY${cachedReport.fiscalYear} (${ageInDays}d old)`);
+                    annualReportInsights = cachedReport.data;
+                    annualFromCache = true;
+                } else {
+                    console.log(`❌ [MongoDB Annual] Cache MISS for ${cleanSymbol}`);
+                }
+            } catch (dbError: any) {
+                console.warn(`⚠️ [MongoDB Annual] Cache check failed: ${dbError.message}`);
+            }
+        }
+        
+        // ============================================
+        // PHASE 2: CHECK MONGODB CACHE FOR QUARTERLY REPORT
+        // ============================================
+        let quarterlyInsights = null;
+        let quarterlyFromCache = false;
+        let quarter = 'Unknown';
+        let rawTranscript = '';
+        
+        if (!forceRefreshQuarterly) {
+            await connectToDatabase();
+            try {
+                const cachedQuarterly = await QuarterlyReportCache.findOne({
+                    symbol: cleanSymbol,
+                    expiresAt: { $gt: new Date() }
+                }).sort({ fiscalYear: -1, quarter: -1 }).limit(1);
+                
+                if (cachedQuarterly) {
+                    const ageInDays = Math.floor((Date.now() - cachedQuarterly.fetchedAt.getTime()) / (1000 * 60 * 60 * 24));
+                    console.log(`✅ [MongoDB Quarterly] Cache HIT for ${cleanSymbol} ${cachedQuarterly.quarter} (${ageInDays}d old)`);
+                    quarterlyInsights = cachedQuarterly.data;
+                    quarter = cachedQuarterly.quarter;
+                    rawTranscript = cachedQuarterly.rawTranscript || '';
+                    quarterlyFromCache = true;
+                } else {
+                    console.log(`❌ [MongoDB Quarterly] Cache MISS for ${cleanSymbol}`);
+                }
+            } catch (dbError: any) {
+                console.warn(`⚠️ [MongoDB Quarterly] Cache check failed: ${dbError.message}`);
+            }
+        }
+        
+        // ============================================
+        // PHASE 3: IF BOTH CACHED, RETURN EARLY
+        // ============================================
+        if (annualFromCache && quarterlyFromCache) {
+            console.log(`💾 [MongoDB] Both annual + quarterly cached for ${cleanSymbol}`);
             return {
-                transcript: cached.data.transcript,
-                annualReport: cached.data.annualReport,
-                annualReportInsights: cached.data.annualReportInsights,
+                transcript: rawTranscript,
+                annualReport: '',
+                annualReportInsights: annualReportInsights,
+                quarterlyInsights: quarterlyInsights,
                 fromCache: true,
-                quarter: cached.data.quarter,
-                source: 'Cache'
+                quarter: quarter,
+                source: 'MongoDB Cache',
+                cacheType: 'mongodb'
             };
         }
         
-        // Verify Screener.in credentials are available
+        // ============================================
+        // PHASE 4: VERIFY CREDENTIALS & FETCH FRESH DATA
+        // ============================================
         if (!process.env.SCREENER_EMAIL || !process.env.SCREENER_PASSWORD) {
-            console.error(`❌ [Screener.in] Missing credentials for ${cleanSymbol}`);
-            throw new Error('Screener.in credentials required. Set SCREENER_EMAIL and SCREENER_PASSWORD in .env file.');
+            throw new Error('Screener.in credentials required');
         }
         
-        console.log(`🔐 [Screener.in] Fetching comprehensive data for ${cleanSymbol}...`);
-        console.log(`📊 [Strategy] Cookie-authenticated scraping → BSE India PDF parsing`);
+        console.log(`🔐 [Screener.in] Fetching fresh data for ${cleanSymbol}...`);
         
-        
-        // Fetch from Screener.in with authenticated session
         const { fetchScreenerComprehensiveData } = await import('../../utils/screenerScraper');
         const screenerData = await fetchScreenerComprehensiveData(symbol);
-        console.log('🔍 [DEBUG] screenerData keys:', Object.keys(screenerData));
-        console.log('🔍 [DEBUG] screenerData.annualReport exists:', !!screenerData.annualReport);
-        console.log('🔍 [DEBUG] screenerData.annualReport:', screenerData.annualReport ? `FY${screenerData.annualReport.fiscalYear}, ${screenerData.annualReport.content?.length || 0} chars` : 'NULL');
         
-        let transcript = '';
-        let quarter = 'Unknown';
         let annualReport = '';
-        
-        // Process quarterly transcript
-        if (screenerData.transcript) {
-            transcript = `QUARTER: ${screenerData.transcript.quarter}\nDATE: ${screenerData.transcript.date}\nSOURCE: ${screenerData.transcript.source}\n\n${screenerData.transcript.content}`;
+
+        // ============================================
+        // PHASE 5: PROCESS & EXTRACT QUARTERLY DATA (Screener.in)
+        // ============================================
+        if (!quarterlyFromCache && screenerData.transcript) {
+            rawTranscript = screenerData.transcript.content;
             quarter = screenerData.transcript.quarter;
-            console.log(`✅ [Transcript] ${quarter} (${screenerData.transcript.content.length} chars)`);
-        } else {
-            console.warn(`⚠️ [Transcript] Not available for ${cleanSymbol}`);
-        }
-        
-        // Process annual report from BSE India PDF
-        if (screenerData.annualReport) {
-            annualReport = `FISCAL YEAR: ${screenerData.annualReport.fiscalYear}\nSOURCE: ${screenerData.annualReport.source}\nURL: ${screenerData.annualReport.url}\n\n${screenerData.annualReport.content}`;
-            console.log(`✅ [Annual Report] FY${screenerData.annualReport.fiscalYear} via ${screenerData.annualReport.source} (${screenerData.annualReport.content.length} chars)`);
-        } else {
-            console.warn(`⚠️ [Annual Report] Not available for ${cleanSymbol}`);
-        }
-        
-        // Require at least one data source
-        if (!transcript && !annualReport) {
-            throw new Error('Screener.in returned no quarterly transcript or annual report data');
-        }
-        
-        // Helper function: Regex-based balance sheet extraction (fallback)
-        function extractBalanceSheetWithRegex(text: string) {
-            console.log(`🔧 [Regex Fallback] Attempting manual extraction...`);
             
-            const parseNum = (str: string) => parseFloat(str.replace(/,/g, ''));
+            console.log(`🔍 [Quarterly] Processing ${quarter} data from Screener.in...`);
             
-            // Try multiple pattern variations (case-insensitive)
-            const assetsMatch = text.match(/total\s+assets[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                              text.match(/assets\s+total[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
+            // Extract quarterly insights using AI
+            quarterlyInsights = await extractQuarterlyInsights(
+                cleanSymbol,
+                rawTranscript,
+                quarter,
+                screenerData.transcript.fiscalYear
+            );
             
-            const equityMatch = text.match(/total\s+equity[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                              text.match(/shareholders['\s]+equity[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                              text.match(/net\s+worth[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            // STRATEGY: Most balance sheets show components separately
-            // PRIORITY 1: Sum "Total non-current liabilities" + "Total current liabilities"
-            // PRIORITY 2: Find "Total liabilities" line (but validate it doesn't equal Assets)
-            
-            let liabilitiesData = null;
-            
-            // FIRST: Try to find and sum components (most reliable)
-            // Use negative lookbehind to prevent "current liabilities" from matching "non-current liabilities"
-            // Handle multiple spaces between label and numbers (OCR format has variable spacing)
-            // REQUIRE "Total" prefix to avoid matching "Other non-current liabilities" from summary tables
-            const nonCurrentLiabMatch = text.match(/total\s+non[\s-]current\s+liabilities\s+([\d,\.]+)\s+([\d,\.]+)/i);
-            const currentLiabMatch = text.match(/(?<!non[\s-])total\s+current\s+liabilities\s+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            console.log(`🔍 [Regex Debug] Non-current match:`, nonCurrentLiabMatch ? `${nonCurrentLiabMatch[1]}, ${nonCurrentLiabMatch[2]}` : 'NOT FOUND');
-            console.log(`🔍 [Regex Debug] Current match:`, currentLiabMatch ? `${currentLiabMatch[1]}, ${currentLiabMatch[2]}` : 'NOT FOUND');
-            
-            if (nonCurrentLiabMatch && currentLiabMatch) {
-                const nonCurrentCurr = parseNum(nonCurrentLiabMatch[1]);
-                const nonCurrentPrev = parseNum(nonCurrentLiabMatch[2]);
-                const currentCurr = parseNum(currentLiabMatch[1]);
-                const currentPrev = parseNum(currentLiabMatch[2]);
-                
-                // CRITICAL VALIDATION: If both numbers are identical, we matched the same line twice!
-                if (nonCurrentCurr === currentCurr && nonCurrentPrev === currentPrev) {
-                    console.error(`❌ [Regex] ERROR: Non-current and current liabilities are IDENTICAL!`);
-                    console.error(`   Non-current: ${nonCurrentCurr}, Current: ${currentCurr}`);
-                    console.error(`   This means the regex matched the same line twice - pattern is broken`);
-                    console.warn(`   Falling back to calculation from equation (Assets - Equity)`);
-                    liabilitiesData = null;
-                } else {
-                    liabilitiesData = {
-                        current: nonCurrentCurr + currentCurr,
-                        previous: nonCurrentPrev + currentPrev
-                    };
-                    console.log(`✅ [Regex] Calculated Total Liabilities from components:`);
-                    console.log(`   Non-current liabilities: ${nonCurrentCurr}`);
-                    console.log(`   + Current liabilities: ${currentCurr}`);
-                    console.log(`   = Total: ${liabilitiesData.current}`);
-                    console.log(`   Previous: ${nonCurrentPrev} + ${currentPrev} = ${liabilitiesData.previous}`);
-                    
-                    // EQUATION VALIDATION: Verify Assets = Equity + Liabilities (2% tolerance)
-                    if (assetsMatch && equityMatch) {
-                        const assets = parseNum(assetsMatch[1]);
-                        const equity = parseNum(equityMatch[1]);
-                        const calculatedLiabilities = assets - equity;
-                        const difference = Math.abs(liabilitiesData.current - calculatedLiabilities);
-                        const tolerance = calculatedLiabilities * 0.02; // 2% tolerance
-                        
-                        if (difference > tolerance) {
-                            console.error(`❌ [Regex Validation] Equation failed!`);
-                            console.error(`   Assets: ${assets}`);
-                            console.error(`   Equity: ${equity}`);
-                            console.error(`   Extracted Liabilities: ${liabilitiesData.current}`);
-                            console.error(`   Expected Liabilities (A-E): ${calculatedLiabilities}`);
-                            console.error(`   Difference: ${difference} (tolerance: ${tolerance})`);
-                            console.warn(`   Rejecting regex results - likely matched wrong section`);
-                            liabilitiesData = null;
-                        } else {
-                            console.log(`✅ [Regex Validation] Equation passed: ${assets} = ${equity} + ${liabilitiesData.current}`);
-                        }
-                    }
-                }
+            if (quarterlyInsights) {
+                console.log(`✅ [Quarterly] Extracted insights for ${quarter}`);
             } else {
-                // FALLBACK: Try to find "Total liabilities" line
-                // But DO NOT match "Total equity and liabilities" (that equals Assets!)
-                const totalLiabMatch = text.match(/^(?!.*equity).*total\s+liabilities[:\s]+([\d,\.]+)\s+([\d,\.]+)/im) ||
-                                      text.match(/^(?!.*equity).*liabilities\s+total[:\s]+([\d,\.]+)\s+([\d,\.]+)/im);
-                
-                if (totalLiabMatch) {
-                    const extractedCurrent = parseNum(totalLiabMatch[1]);
-                    const extractedPrevious = parseNum(totalLiabMatch[2]);
-                    
-                    // Validate: If liabilities = assets, we extracted WRONG line!
-                    if (assetsMatch && Math.abs(extractedCurrent - parseNum(assetsMatch[1])) < 10) {
-                        console.error(`❌ [Regex] ERROR: Extracted liabilities (${extractedCurrent}) equals assets (${parseNum(assetsMatch[1])})!`);
-                        console.error(`   This means we matched "Total equity and liabilities" instead of "Total liabilities"`);
-                        console.warn(`   Falling back to calculation from equation`);
-                    } else {
-                        liabilitiesData = {
-                            current: extractedCurrent,
-                            previous: extractedPrevious
-                        };
-                        console.log(`✅ [Regex] Found Total Liabilities line: ${extractedCurrent}`);
-                    }
-                } else {
-                    console.warn(`⚠️ [Regex] Could NOT find liabilities (neither components nor total line)`);
-                    console.warn(`   Will calculate: Liabilities = Assets - Equity`);
-                }
+                console.warn(`⚠️ [Quarterly] Failed to extract insights for ${quarter}`);
             }
             
-            const revenueMatch = text.match(/revenue\s+from\s+operations[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                               text.match(/total\s+(?:revenue|income)[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            const pbtMatch = text.match(/profit\s+before\s+tax[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                           text.match(/pbt[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            const taxMatch = text.match(/(?:total\s+)?tax\s+expense[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                           text.match(/income\s+tax[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            const patMatch = text.match(/profit\s+(?:after\s+tax|for\s+the\s+year)[:\s]+([\d,\.]+)\s+([\d,\.]+)/i) ||
-                           text.match(/net\s+profit[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            const epsMatch = text.match(/(?:earnings|basic)\s+(?:per\s+share|eps)[:\s]+([\d,\.]+)\s+([\d,\.]+)/i);
-            
-            if (assetsMatch && equityMatch) {
-                console.log(`✅ [Regex] Found: Assets=${assetsMatch[1]}, Equity=${equityMatch[1]}`);
-                return {
-                    balanceSheet: {
-                        assets: {
-                            totalAssets: {
-                                current: parseNum(assetsMatch[1]),
-                                previous: parseNum(assetsMatch[2])
-                            }
-                        },
-                        equity: {
-                            totalEquity: {
-                                current: parseNum(equityMatch[1]),
-                                previous: parseNum(equityMatch[2])
-                            }
-                        },
-                        liabilities: liabilitiesData ? {
-                            totalLiabilities: liabilitiesData
-                        } : { totalLiabilities: { current: null, previous: null } },
-                        profitAndLoss: {
-                            revenue: revenueMatch ? {
-                                current: parseNum(revenueMatch[1]),
-                                previous: parseNum(revenueMatch[2])
-                            } : { current: null, previous: null },
-                            profitBeforeTax: pbtMatch ? {
-                                current: parseNum(pbtMatch[1]),
-                                previous: parseNum(pbtMatch[2])
-                            } : { current: null, previous: null },
-                            taxExpense: taxMatch ? {
-                                current: parseNum(taxMatch[1]),
-                                previous: parseNum(taxMatch[2])
-                            } : { current: null, previous: null },
-                            profitAfterTax: patMatch ? {
-                                current: parseNum(patMatch[1]),
-                                previous: parseNum(patMatch[2])
-                            } : { current: null, previous: null },
-                            eps: epsMatch ? {
-                                current: parseNum(epsMatch[1]),
-                                previous: parseNum(epsMatch[2])
-                            } : { current: null, previous: null }
-                        }
-                    }
-                };
-            }
-            
-            console.warn(`⚠️ [Regex] Failed to extract balance sheet`);
-            return null;
+            // Add delay to respect rate limits
+            await new Promise(resolve => setTimeout(resolve, 10000));
         }
 
-        // Extract structured insights from annual report using AI
-        let annualReportInsights = null;
-        if (annualReport && annualReport.length > 0) {
-            console.log(`🔍 [AI] Extracting structured insights from annual report (OCR'd text)...`);
+        // ============================================
+        // PHASE 6: PROCESS & EXTRACT ANNUAL REPORT (if not cached)
+        // ============================================
+        if (!annualFromCache && screenerData.annualReport) {
+             console.log(`⏳ [PHASE 6] Starting ANNUAL report extraction (sequential after quarterly)...`);
+            annualReport = `FISCAL YEAR: ${screenerData.annualReport.fiscalYear}\nSOURCE: ${screenerData.annualReport.source}\nURL: ${screenerData.annualReport.url}\n\n${screenerData.annualReport.content}`;
+            console.log(`✅ [Annual Report] FY${screenerData.annualReport.fiscalYear} (${screenerData.annualReport.content.length} chars)`);
             
-            // Debug: Log sample of text being sent
-            const textSample = annualReport.substring(70000, 72500);
-            console.log(`📤 [Text Sample around Balance Sheet]:`, textSample);
-            
-            // Debug: Search for liabilities labels in the text
-            console.log(`\n🔍 [Searching for Liabilities labels in text]:`);
-            const liabSearchPatterns = [
-                { name: 'Total liabilities', pattern: /total\s+liabilities[^\n]{0,100}/gi },
-                { name: 'Liabilities total', pattern: /liabilities\s+total[^\n]{0,100}/gi },
-                { name: 'Non-current liabilities', pattern: /(?:total\s+)?(?:non[\s-]current|long[\s-]term)\s+liabilities[^\n]{0,100}/gi },
-                { name: 'Current liabilities', pattern: /(?:total\s+)?current\s+liabilities[^\n]{0,100}/gi },
-                { name: 'Equity and liabilities', pattern: /total\s+equity\s+and\s+liabilities[^\n]{0,100}/gi }
-            ];
-            
-            liabSearchPatterns.forEach(({ name, pattern }) => {
-                const matches = annualReport.substring(0, 0).match(pattern);
-                if (matches && matches.length > 0) {
-                    console.log(`   ✅ "${name}" found (${matches.length} matches):`, matches.slice(0, 2)); // Show first 2
-                } else {
-                    console.log(`   ❌ "${name}" NOT found`);
-                }
-            });
+            // Keep existing annual report AI extraction (lines 601-2116)
+            if (annualReport && annualReport.length > 0) {
+                console.log(`🔍 [AI Annual] Extracting insights...`);
+            }
             
             try {
                 const extractionPrompt = `⚠️⚠️⚠️ CRITICAL: READ AND EXTRACT FROM THE ACTUAL DOCUMENT BELOW ⚠️⚠️⚠️
-
-const extractionPrompt = Extract from Indian annual report:
+Extract from Indian annual report:
 ${annualReport.substring(0, 2000000)}
 
 ⚠️ THE DOCUMENT TEXT ABOVE CONTAINS THE REAL DATA YOU MUST EXTRACT
@@ -1451,8 +1541,8 @@ Provide response in this EXACT JSON format:
     "firmName": "B S R & Co. LLP",
     "registrationNumber": "101248W/W-100022",
     "partnerName": "Aniruddha Godbole",
-    "membershipNumber": "105149",
-    "reportDate": "2025-04-10",
+    "partnerMembershipNumber": "105149",
+    "auditReportDate": "2025-04-10",
     "location": "Mumbai",
     "udin": "25105149BMLWYM7865"
   },
@@ -1605,7 +1695,7 @@ CRITICAL VALIDATION BEFORE RETURNING:
 
 2. Unit consistency check - ALL values must be in SAME scale:
    - If Total Assets is 621532, then Equity should be ~523111 and Liabilities ~98421 (all 5-6 digits)
-   - If Total Assets is 6215.32, then Equity should be ~5231.11 and Liabilities ~984.21 (all have decimals)
+   - If Total Assets is  6215.32, then Equity should be ~5231.11 and Liabilities ~984.21 (all have decimals)
    - DO NOT mix formats: Don't have Assets=621532 with Equity=5231.11 (different scales)
 
 3. Annual vs Quarterly check:
@@ -2014,7 +2104,8 @@ i need thses prompt without missing in minimal
                 const insightsResponse = await callGeminiAPI(extractionPrompt, { temperature: 0.2, maxTokens: 200000 });
                 
                 // Debug: Log raw Gemini response
-                console.log(`📝 [Gemini Raw Response] Length: ${insightsResponse?.length || 0} chars`);
+                console.log(`🔍 [DEBUG Annual] Response length:`, insightsResponse?.length);
+                console.log(`🔍 [DEBUG Annual] Response preview:`, insightsResponse?.substring(0, 200));
                 if (insightsResponse) {
                     const preview = insightsResponse.substring(0, 1200);
                     console.log(`📝 [Gemini Preview]:`, preview);
@@ -2077,22 +2168,7 @@ i need thses prompt without missing in minimal
                         const salvagedData = JSON.parse(salvaged);
                         console.log(`✅ [Salvage Success] Recovered ${Object.keys(salvagedData).length} sections`);
                         console.log(`📊 [Recovered]:`, Object.keys(salvagedData).join(', '));
-                        
-                        // Add placeholders for missing sections with explanatory notes
-                        // salvagedData.remuneration = {
-                        //     note: "Section exceeded Gemini's 8K token output limit (~30KB response truncation). Consider requesting separate detailed remuneration report.",
-                        //     fiscalYear: salvagedData.fiscalYear || null,
-                        //     available: false
-                        // };
-                        
-                        // salvagedData.auditInformation = {
-                        //     available: false,
-                        //     note: "Section exceeded Gemini's 8K token output limit (~30KB response truncation). Partial audit data may exist in original PDF. Consider requesting separate detailed audit report.",
-                        //     companyName: salvagedData.companyName || null,
-                        //     fiscalYear: salvagedData.fiscalYear || null
-                        // };
-                        
-                        // CRITICAL FIX: Assign to extractedInsights so it continues through validation
+                                              // CRITICAL FIX: Assign to extractedInsights so it continues through validation
                         extractedInsights = salvagedData;
                         console.log(`🔄 [Salvage] Assigned salvaged data to extractedInsights - continuing through normal validation flow`);
                     } catch (e: any) {
@@ -2132,23 +2208,6 @@ if (extractedInsights) {
                         }
                     }
                     
-                    // Check if Gemini returned nulls for balance sheet
-                    const hasNullAssets = !extractedInsights.balanceSheet?.assets?.totalAssets?.current;
-                    const hasNullEquity = !extractedInsights.balanceSheet?.equity?.totalEquity?.current;
-                    
-                    if (hasNullAssets || hasNullEquity) {
-                        console.warn(`⚠️ [AI] Gemini returned null values, trying regex fallback...`);
-                        const regexResult = extractBalanceSheetWithRegex(annualReport);
-                        
-                        if (regexResult?.balanceSheet) {
-                            // Merge regex results with AI results
-                            extractedInsights.balanceSheet = {
-                                ...extractedInsights.balanceSheet,
-                                ...regexResult.balanceSheet
-                            };
-                            console.log(`✅ [Regex Fallback] Successfully extracted balance sheet data`);
-                        }
-                    }
                     
                     // Calculate liabilities if missing (Assets - Equity = Liabilities)
                     if (extractedInsights.balanceSheet?.assets?.totalAssets?.current && 
@@ -2282,30 +2341,63 @@ if (extractedInsights) {
                 console.warn(`⚠️ [AI] Failed to extract annual report insights: ${extractError.message}`);
             }
         }
-        
+
+                if (annualReportInsights) {
+            try {
+                await connectToDatabase();
+                
+                const expiresAt = new Date();
+                expiresAt.setMonth(expiresAt.getMonth() + 6); // 6 months from now
+                
+                await AnnualReportCache.findOneAndUpdate(
+                    {
+                        symbol: cleanSymbol,
+                        fiscalYear: annualReportInsights.fiscalYear,
+                        reportType: annualReportInsights.reportType || 'Consolidated'
+                    },
+                    {
+                        $set: {
+                            data: annualReportInsights,
+                            rawPdfUrl: screenerData.annualReport?.url || '',
+                            source: 'BSE India via Screener.in',
+                            fetchedAt: new Date(),
+                            expiresAt: expiresAt
+                        }
+                    },
+                    { upsert: true, new: true }
+                );
+            
+                console.log(`💾 [MongoDB] Saved ${cleanSymbol} FY${annualReportInsights.fiscalYear} (6-month TTL)`);
+            } catch (dbSaveError: any) {
+                // Don't fail the request if DB save fails - data still works
+                console.warn(`⚠️ [MongoDB] Save failed (non-critical): ${dbSaveError.message}`);
+            }
+        }
+    
         // Cache the results
-        batchDataCache.set(cleanSymbol, { transcript, annualReport, quarter, annualReportInsights });
+        batchDataCache.set(cleanSymbol, { transcript: rawTranscript, annualReport, quarter, annualReportInsights });
         
-        console.log(`✅ [SUCCESS] Comprehensive data fetched from Screener.in for ${cleanSymbol}`);
-        
+    
         return {
-            transcript,
-            annualReport,
-            annualReportInsights,
-            fromCache: false,
-            quarter,
-            source: 'Screener.in Direct + BSE India PDF (Cookie/Parser)',
+            transcript: rawTranscript,
+            annualReport: annualReport,
+            annualReportInsights: annualReportInsights,
+            quarterlyInsights: quarterlyInsights,
+            fromCache: annualFromCache && quarterlyFromCache,
+            quarter: quarter,
+            source: 'Screener.in Direct + BSE India PDF',
             screenerSource: true
         };
         
-    } catch (error: any) {
-        console.error(`❌ [Comprehensive Data] Failed for ${cleanSymbol}:`, error.message);
-    
-        // Return empty data with error information
+        
+ } catch (error: any) {
+        console.error(`❌ [Comprehensive Data] Failed:`, error.message);
+        
         return {
             transcript: '',
             annualReport: '',
             annualReportInsights: null,
+            quarterlyInsights: null,
             fromCache: false,
             quarter: 'Unknown',
             source: 'Error',
@@ -2349,7 +2441,7 @@ function generateLongTermChart(
 // HELPER: BUILD COMPLETE STOCK DATA WITH FULL AI ANALYSIS
 // ========================
 
-async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean = false) {
+async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean = false, forceRefresh: boolean = false, forceRefreshQuarterly: boolean = false) {
     try {
         console.log(`🔨 [Build] Constructing complete stock data for ${symbol}...`);
         
@@ -2387,13 +2479,19 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
         if (isIndianStock) {
             console.log(`📊 [Comprehensive] Fetching quarterly transcripts and annual reports using Gemini...`);
             try {
-                comprehensiveData = await mcpGetIndianComprehensiveData(symbol);
-                console.log(`✅ [Comprehensive] Got data from ${comprehensiveData.source}`);
-               console.log(`🔍 [DEBUG] comprehensiveData keys:`, Object.keys(comprehensiveData || {}));
-               console.log(`🔍 [DEBUG] annualReportInsights exists:`, !!comprehensiveData?.annualReportInsights);
-               console.log(`🔍 [DEBUG] annualReportInsights value:`, comprehensiveData?.annualReportInsights);
-            } catch (compError: any) {
-                console.warn(`⚠️ [Comprehensive] Failed: ${compError.message}`);
+                    comprehensiveData = await mcpGetIndianComprehensiveData(symbol,forceRefresh,forceRefreshQuarterly);
+    console.log(`🔍 [DEBUG] Raw comprehensiveData:`, comprehensiveData);
+    console.log(`🔍 [DEBUG] Type:`, typeof comprehensiveData);
+    console.log(`🔍 [DEBUG] Is null:`, comprehensiveData === null);
+    console.log(`🔍 [DEBUG] Is undefined:`, comprehensiveData === undefined);
+    console.log(`🔍 [DEBUG] comprehensiveData keys:`, Object.keys(comprehensiveData || {}));
+    console.log(`🔍 [DEBUG] annualReportInsights exists:`, !!comprehensiveData?.annualReportInsights);
+    console.log(`🔍 [DEBUG] annualReportInsights value:`, comprehensiveData?.annualReportInsights);
+    console.log(`🔍 [DEBUG] quarterlyInsights exists:`, !!comprehensiveData?.quarterlyInsights);
+} catch (compError: any) {
+    console.warn(`⚠️ [Comprehensive] Failed: ${compError.message}`);
+    console.error(`🔍 [DEBUG] Full error:`, compError);
+
             }
         }
         
@@ -2625,14 +2723,21 @@ Provide detailed analysis in this EXACT JSON format:
     }
 }),
 // Add quarterly transcript separately
-...(comprehensiveData?.transcript && {
-    quarterlyTranscript: {
-        quarter: comprehensiveData.quarter || 'Latest',
-        content: comprehensiveData.transcript,
+...(comprehensiveData?.quarterlyInsights && {
+    quarterlyReport: {
+        quarter: comprehensiveData.quarterlyInsights.quarter || comprehensiveData.quarter,
+        keyMetrics: comprehensiveData.quarterlyInsights.keyMetrics,
+        managementCommentary: comprehensiveData.quarterlyInsights.managementCommentary,
+        segmentPerformance: comprehensiveData.quarterlyInsights.segmentPerformance,
+        financialRatios: comprehensiveData.quarterlyInsights.financialRatios,
+        cashFlow: comprehensiveData.quarterlyInsights.cashFlow,
+        outlook: comprehensiveData.quarterlyInsights.outlook,
+        competitivePosition: comprehensiveData.quarterlyInsights.competitivePosition,
+        summary: comprehensiveData.quarterlyInsights.summary,
         source: comprehensiveData.source || 'Screener.in',
         fromCache: comprehensiveData.fromCache
-                }
-            })
+    }
+})
         };
         
         // Cache the result
@@ -2708,13 +2813,13 @@ function getDefaultPredictions(currentPrice: number) {
 
 export async function POST(request: NextRequest) {
     try {
-        const { query, model, conversation, skipAI } = await request.json();
+        const { query, model, conversation, skipAI, forceRefresh , forceRefreshQuarterly} = await request.json();
         
         if (!query) {
             return NextResponse.json({ error: 'Query required' }, { status: 400 });
         }
 
-        console.log(`🔍 [API] Processing query: "${query}"${skipAI ? ' (skipAI=true)' : ''}`);
+        console.log(`🔍 [API] Processing query: "${query}"${skipAI ? ' (skipAI=true)' : ''}${forceRefresh ? ' (forceRefresh=true)' : ''}${forceRefreshQuarterly ? ' (forceRefreshQuarterly=true)' : ''}`);
 
         // Extract stock symbol from query
         const symbolMatch = query.match(/([A-Z0-9]+(?:\.[A-Z]+)?)/i);
@@ -2747,7 +2852,7 @@ export async function POST(request: NextRequest) {
             }
 
             // Build complete stock data with predictions
-            const stockData = await buildStockData(symbol, fundamentals, skipAI || false);
+           const stockData = await buildStockData(symbol, fundamentals, skipAI || false, forceRefresh || false);
 
             console.log(`✅ [Success] Returning stock data for ${symbol}`);
             return NextResponse.json({

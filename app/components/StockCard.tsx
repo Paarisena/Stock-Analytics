@@ -1,8 +1,9 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
-import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Radio, Volume2, Clock, AlertTriangle } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Radio, Volume2, Clock, AlertTriangle,RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import ComprehensiveReportCard from './ComprehensiveReportCard';
+import { callGeminiAPI } from '../utils/aiProviders';
 import AnnualReportAccordion from './AnnualReportAccordion';
 
 // Helper function to safely render balance sheet values
@@ -174,6 +175,20 @@ interface StockData {
   };
   cacheAge?: number;
   fromCache?: boolean;
+
+  quarterlyReport?: {
+    quarter: string;
+    keyMetrics?: any;
+    managementCommentary?: any;
+    segmentPerformance?: any[];
+    financialRatios?: any;
+    cashFlow?: any;
+    outlook?: any;
+    competitivePosition?: any;
+    summary?: string;
+    source?: string;
+    fromCache?: boolean;
+  };
 }
 
 export default function StockCard({ data }: { data: StockData }) {
@@ -202,6 +217,8 @@ export default function StockCard({ data }: { data: StockData }) {
   const [fyCheckData, setFYCheckData] = useState<any>(null);
   const [deepAnalysisData, setDeepAnalysisData] = useState<any>(null);
   const [elapsedTime, setElapsedTime] = useState(0);
+  const [isRefreshingReport, setIsRefreshingReport] = useState(false);
+
   
   if (!data || !data.current || !data.shortTermPrediction || !data.longTermPrediction || !data.chartData || !data.longTermChartData) {
     return null;
@@ -421,6 +438,39 @@ export default function StockCard({ data }: { data: StockData }) {
   const parseBulletPoint = (text: string) => {
     return text.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
   };
+
+    // Handle force refresh of annual report
+  const handleRefreshAnnualReport = async () => {
+    setIsRefreshingReport(true);
+    
+    try {
+      const response = await fetch('/api/search', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          query: `${data.symbol} stock price`,
+          model: `${callGeminiAPI}`,
+          forceRefresh: true  // Force refresh annual report from BSE India
+        })
+      });
+
+      if (response.ok) {
+        // Reload the page to show fresh data
+        window.location.reload();
+      } else {
+        console.error('Failed to refresh annual report');
+        alert('Failed to refresh annual report. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error refreshing annual report:', error);
+      alert('Error refreshing annual report. Please try again.');
+    } finally {
+      setIsRefreshingReport(false);
+    }
+  };
+
 
   return (
     <div className="my-6 p-6 bg-gradient-to-br from-green-900/20 via-emerald-800/10 to-teal-900/20 backdrop-blur-xl rounded-2xl border border-green-500/20 shadow-2xl">
@@ -884,10 +934,7 @@ export default function StockCard({ data }: { data: StockData }) {
                 <span className="text-gray-500">Calculated from last 50 periods</span>
               </div>
             </div>
-          </div>
-        </div>
-      )}
-        
+          
 
       {/* Live Bulletin Feed */}
       {bulletinMessages.length > 0 && (
@@ -1718,10 +1765,33 @@ export default function StockCard({ data }: { data: StockData }) {
       {/* Annual Report Insights - Structured Data */}
       {data.annualReport && (
         <div className="bg-gradient-to-br from-indigo-900/40 to-purple-900/40 rounded-xl p-6 border border-indigo-500/30 backdrop-blur-md">
-          <h3 className="text-xl font-bold text-white mb-6 flex items-center gap-3">
-            <span className="text-3xl">📊</span>
-            Annual Report Key Insights
-          </h3>
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="text-3xl">📊</span>
+              Annual Report Key Insights
+              {data.annualReport.fromCache && (
+                <span className="text-xs text-green-400 bg-green-900/30 px-2 py-1 rounded-full">
+                  Cached
+                </span>
+              )}
+              {data.annualReport.source && (
+                <span className="text-xs text-purple-400">
+                  • {data.annualReport.source}
+                </span>
+              )}
+            </h3>
+            
+            {/* Force Refresh Button */}
+            <button
+              onClick={handleRefreshAnnualReport}
+              disabled={isRefreshingReport}
+              className="px-3 py-2 bg-purple-600/80 hover:bg-purple-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 text-sm font-medium shadow-lg"
+              title="Force refresh annual report from BSE India (bypasses 6-month cache)"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshingReport ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingReport ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
 
           <div className="space-y-6">
             {/* Business Model */}
@@ -1799,7 +1869,6 @@ export default function StockCard({ data }: { data: StockData }) {
                   </p>
                 </div>
               )}
-            </div>
               
               {/* Executive Remuneration */}
               {data.annualReport.remuneration && data.annualReport.remuneration.available !== false && data.annualReport.remuneration.executiveDirectors && (
@@ -2223,13 +2292,13 @@ export default function StockCard({ data }: { data: StockData }) {
                           <p className="text-gray-300">{data.annualReport.auditInformation.caro.holdingCompanyRemarks}</p>
                         </div>
                         
-                        {data.annualReport.auditInformation.caro.subsidiariesWithIssues && 
-                         data.annualReport.auditInformation.caro.subsidiariesWithIssues.length > 0 && (
-                          <div className="bg-red-900/20 rounded-lg p-3 border border-red-500/30">
-                            <p className="text-xs text-red-400 mb-2">⚠️ Subsidiaries with Issues:</p>
-                            <ul className="list-disc list-inside space-y-1 text-gray-300">
-                              {data.annualReport.auditInformation.caro.subsidiariesWithIssues.map((sub: any, idx: number) => (
-                                <li key={idx} className="flex justify-between items-center">
+{data.annualReport.auditInformation.caro.subsidiariesWithIssues && 
+ data.annualReport.auditInformation.caro.subsidiariesWithIssues.length > 0 && (
+  <div className="bg-red-900/20 rounded-lg p-3 border border-red-500/30">
+    <p className="text-xs text-red-400 mb-2">⚠️ Subsidiaries with Issues:</p>
+    <ul className="list-disc list-inside space-y-1 text-gray-300">
+      {data.annualReport.auditInformation.caro.subsidiariesWithIssues.map((sub: any, idx: number) => (
+        <li key={idx} className="flex justify-between items-center">
           <span>{typeof sub === 'string' ? sub : (sub.name || 'Unknown')}</span>
           {typeof sub === 'object' && (
             <div className="flex items-center gap-2">
@@ -2254,7 +2323,7 @@ export default function StockCard({ data }: { data: StockData }) {
                         {data.annualReport.auditInformation.caro.subsidiariesCARONotIssued && 
                          data.annualReport.auditInformation.caro.subsidiariesCARONotIssued.length > 0 && (
                           <div className="bg-yellow-900/20 rounded-lg p-3 border border-yellow-500/30">
-                            <p className="text-xs text-yellow-400 mb-2">📋 Subsidiaries - CARO Not Issued:</p>
+                            <p className="text-xs text-yellow-400 mb-1">📋 Subsidiaries - CARO Not Issued:</p>
                             <ul className="space-y-2 text-gray-300">
                               {data.annualReport.auditInformation.caro.subsidiariesCARONotIssued.map((sub: any, idx: number) => (
                                 <li key={idx} className="flex justify-between items-center">
@@ -2308,7 +2377,7 @@ export default function StockCard({ data }: { data: StockData }) {
                         {/* Subsidiaries */}
                         {data.annualReport.auditInformation.consolidationScope.subsidiaries && (
                           <div className="bg-slate-800/40 rounded-lg p-4 border border-slate-600/30">
-                            <h6 className="text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2">
+                            <h6 className="text-sm font-semibold text-blue-200 mb-3 flex items-center gap-2">
                               <span>🏢</span> Subsidiaries
                             </h6>
                             <div className="space-y-2 text-sm">
@@ -2335,7 +2404,7 @@ export default function StockCard({ data }: { data: StockData }) {
                         {/* Associates */}
                         {data.annualReport.auditInformation.consolidationScope.associates && (
                           <div className="bg-slate-800/40 rounded-lg p-4 border border-slate-600/30">
-                            <h6 className="text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2">
+                            <h6 className="text-sm font-semibold text-blue-200 mb-3 flex items-center gap-2">
                               <span>🤝</span> Associates
                             </h6>
                             <div className="space-y-2 text-sm">
@@ -2358,7 +2427,7 @@ export default function StockCard({ data }: { data: StockData }) {
                         {/* Joint Ventures */}
                         {data.annualReport.auditInformation.consolidationScope.jointVentures && (
                           <div className="bg-slate-800/40 rounded-lg p-4 border border-slate-600/30">
-                            <h6 className="text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2">
+                            <h6 className="text-sm font-semibold text-blue-200 mb-3 flex items-center gap-2">
                               <span>🔗</span> Joint Ventures
                             </h6>
                             <div className="space-y-2 text-sm">
@@ -2382,7 +2451,7 @@ export default function StockCard({ data }: { data: StockData }) {
                       {/* Component Auditors */}
                       {data.annualReport.auditInformation.consolidationScope.componentAuditors && (
                         <div className="mt-4 bg-slate-800/40 rounded-lg p-4 border border-slate-600/30">
-                          <h6 className="text-sm font-semibold text-cyan-200 mb-3 flex items-center gap-2">
+                          <h6 className="text-sm font-semibold text-blue-200 mb-3 flex items-center gap-2">
                             <span>🧑‍🤝‍🧑</span> Component Auditors
                           </h6>
                           <div className="grid md:grid-cols-2 gap-3 text-sm">
@@ -2395,7 +2464,7 @@ export default function StockCard({ data }: { data: StockData }) {
                               <span className="ml-2 font-semibold text-gray-300">{data.annualReport.auditInformation.consolidationScope.componentAuditors.percentageOfAssets}</span>
                             </div>
                           </div>
-                          {data.annualReport.auditInformation.consolidationScope.componentAuditors.firms && 
+                          {Array.isArray(data.annualReport.auditInformation.consolidationScope.componentAuditors.firms) && 
                            data.annualReport.auditInformation.consolidationScope.componentAuditors.firms.length > 0 && (
                             <div className="mt-3 pt-3 border-t border-slate-600/30">
                               <p className="text-xs text-slate-400 mb-2">Audit Firms:</p>
@@ -2708,7 +2777,434 @@ export default function StockCard({ data }: { data: StockData }) {
               </div>
             )}
           </div>
+        </div>
+      )}
+
+      {/* Quarterly Report Insights - From HTML Table */}
+      {data.quarterlyReport && (
+        <div className="bg-gradient-to-br from-teal-900/40 to-cyan-900/40 rounded-xl p-6 border border-teal-500/30 backdrop-blur-md mt-6">
+          <div className="flex items-center justify-between mb-6">
+            <h3 className="text-xl font-bold text-white flex items-center gap-3">
+              <span className="text-3xl">📊</span>
+              Quarterly Results Analysis - {data.quarterlyReport.quarter}
+              {data.quarterlyReport.fromCache && (
+                <span className="text-xs text-teal-400 bg-teal-900/30 px-2 py-1 rounded-full">
+                  Cached
+                </span>
+              )}
+              {data.quarterlyReport.source && (
+                <span className="text-xs text-gray-400 bg-gray-800/30 px-2 py-1 rounded-full">
+                  {data.quarterlyReport.source}
+                </span>
+              )}
+            </h3>
+            
+            {/* Force Refresh Button for Quarterly */}
+            <button
+              onClick={async () => {
+                setIsRefreshingReport(true);
+                try {
+                  const response = await fetch('/api/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                      query: `${data.symbol} stock price`,
+                      model: 'Sonar',
+                      forceRefreshQuarterly: true
+                    })
+                  });
+                  if (response.ok) {
+                    window.location.reload();
+                  } else {
+                    alert('Failed to refresh quarterly report. Please try again.');
+                  }
+                } catch (error) {
+                  console.error('Error refreshing quarterly report:', error);
+                  alert('Error refreshing quarterly report. Please try again.');
+                } finally {
+                  setIsRefreshingReport(false);
+                }
+              }}
+              disabled={isRefreshingReport}
+              className="px-3 py-2 bg-teal-600/80 hover:bg-teal-600 disabled:bg-gray-600 disabled:cursor-not-allowed text-white rounded-lg transition-all flex items-center gap-2 text-sm font-medium shadow-lg"
+              title="Force refresh quarterly report (bypasses 90-day cache)"
+            >
+              <RefreshCw className={`w-4 h-4 ${isRefreshingReport ? 'animate-spin' : ''}`} />
+              <span>{isRefreshingReport ? 'Refreshing...' : 'Refresh'}</span>
+            </button>
+          </div>
+
+          <div className="space-y-6">
+            {/* Executive Summary */}
+            {data.quarterlyReport.summary && (
+              <div className="bg-gradient-to-br from-indigo-900/30 to-purple-900/30 rounded-lg p-4 border border-indigo-500/30">
+                <h4 className="text-lg font-semibold text-indigo-300 mb-2 flex items-center gap-2">
+                  <span className="text-xl">📝</span> Executive Summary
+                </h4>
+                <p className="text-sm text-gray-300 leading-relaxed whitespace-pre-line">
+                  {data.quarterlyReport.summary}
+                </p>
+              </div>
+            )}
+
+            {/* Key Metrics Grid - Latest Quarter */}
+            {data.quarterlyReport.keyMetrics && (
+              <div className="bg-gradient-to-br from-blue-900/20 to-cyan-900/20 rounded-lg p-4 border border-blue-500/20">
+                <h4 className="text-lg font-semibold text-blue-300 mb-4 flex items-center gap-2">
+                  <span className="text-xl">💰</span> Latest Quarter Financial Metrics
+                </h4>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                  {/* Revenue */}
+                  {data.quarterlyReport.keyMetrics.revenue && (
+                    <div className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                      <div className="text-xs text-gray-400 mb-1">Sales / Revenue</div>
+                      <div className="text-xl font-bold text-white">
+                        ₹{data.quarterlyReport.keyMetrics.revenue.value} Cr
+                      </div>
+                      {data.quarterlyReport.keyMetrics.revenue.yoyGrowth !== null && (
+                        <div className={`text-xs mt-1 font-semibold ${
+                          data.quarterlyReport.keyMetrics.revenue.yoyGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          YoY: {data.quarterlyReport.keyMetrics.revenue.yoyGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.revenue.yoyGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                      {data.quarterlyReport.keyMetrics.revenue.qoqGrowth !== null && (
+                        <div className={`text-xs font-semibold ${
+                          data.quarterlyReport.keyMetrics.revenue.qoqGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          QoQ: {data.quarterlyReport.keyMetrics.revenue.qoqGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.revenue.qoqGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Net Profit */}
+                  {data.quarterlyReport.keyMetrics.netProfit && (
+                    <div className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                      <div className="text-xs text-gray-400 mb-1">Net Profit</div>
+                      <div className="text-xl font-bold text-white">
+                        ₹{data.quarterlyReport.keyMetrics.netProfit.value} Cr
+                      </div>
+                      {data.quarterlyReport.keyMetrics.netProfit.yoyGrowth !== null && (
+                        <div className={`text-xs mt-1 font-semibold ${
+                          data.quarterlyReport.keyMetrics.netProfit.yoyGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          YoY: {data.quarterlyReport.keyMetrics.netProfit.yoyGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.netProfit.yoyGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                      {data.quarterlyReport.keyMetrics.netProfit.qoqGrowth !== null && (
+                        <div className={`text-xs font-semibold ${
+                          data.quarterlyReport.keyMetrics.netProfit.qoqGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          QoQ: {data.quarterlyReport.keyMetrics.netProfit.qoqGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.netProfit.qoqGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Operating Profit */}
+                  {data.quarterlyReport.keyMetrics.operatingProfit && (
+                    <div className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                      <div className="text-xs text-gray-400 mb-1">Operating Profit</div>
+                      <div className="text-xl font-bold text-white">
+                        ₹{data.quarterlyReport.keyMetrics.operatingProfit.value} Cr
+                      </div>
+                      {data.quarterlyReport.keyMetrics.operatingProfit.yoyGrowth !== null && (
+                        <div className={`text-xs mt-1 font-semibold ${
+                          data.quarterlyReport.keyMetrics.operatingProfit.yoyGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          YoY: {data.quarterlyReport.keyMetrics.operatingProfit.yoyGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.operatingProfit.yoyGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                      {data.quarterlyReport.keyMetrics.operatingProfit.qoqGrowth !== null && (
+                        <div className={`text-xs font-semibold ${
+                          data.quarterlyReport.keyMetrics.operatingProfit.qoqGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          QoQ: {data.quarterlyReport.keyMetrics.operatingProfit.qoqGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.operatingProfit.qoqGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* EPS */}
+                  {data.quarterlyReport.keyMetrics.eps && (
+                    <div className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                      <div className="text-xs text-gray-400 mb-1">EPS (₹)</div>
+                      <div className="text-xl font-bold text-white">
+                        ₹{data.quarterlyReport.keyMetrics.eps.value}
+                      </div>
+                      {data.quarterlyReport.keyMetrics.eps.yoyGrowth !== null && (
+                        <div className={`text-xs mt-1 font-semibold ${
+                          data.quarterlyReport.keyMetrics.eps.yoyGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          YoY: {data.quarterlyReport.keyMetrics.eps.yoyGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.eps.yoyGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                      {data.quarterlyReport.keyMetrics.eps.qoqGrowth !== null && (
+                        <div className={`text-xs font-semibold ${
+                          data.quarterlyReport.keyMetrics.eps.qoqGrowth >= 0 ? 'text-green-400' : 'text-red-400'
+                        }`}>
+                          QoQ: {data.quarterlyReport.keyMetrics.eps.qoqGrowth >= 0 ? '↑' : '↓'} {Math.abs(data.quarterlyReport.keyMetrics.eps.qoqGrowth).toFixed(2)}%
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Margin Metrics */}
+                {(data.quarterlyReport.financialRatios?.operatingMargin || data.quarterlyReport.financialRatios?.netMargin) && (
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mt-4">
+                    {data.quarterlyReport.financialRatios.operatingMargin !== null && (
+                      <div className="bg-gray-800/40 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">Operating Margin (OPM)</div>
+                        <div className="text-2xl font-bold text-blue-400">
+                          {data.quarterlyReport.financialRatios.operatingMargin}%
+                        </div>
+                      </div>
+                    )}
+                    {data.quarterlyReport.financialRatios.netMargin !== null && (
+                      <div className="bg-gray-800/40 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">Net Margin</div>
+                        <div className="text-2xl font-bold text-green-400">
+                          {data.quarterlyReport.financialRatios.netMargin}%
+                        </div>
+                      </div>
+                    )}
+                    {data.quarterlyReport.financialRatios.taxRate !== null && (
+                      <div className="bg-gray-800/40 rounded-lg p-3">
+                        <div className="text-xs text-gray-400">Tax Rate</div>
+                        <div className="text-2xl font-bold text-yellow-400">
+                          {data.quarterlyReport.financialRatios.taxRate}%
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Management Commentary */}
+            {data.quarterlyReport.managementCommentary && (
+              <div className="grid md:grid-cols-2 gap-4">
+                {/* Business Highlights */}
+                {data.quarterlyReport.managementCommentary.businessHighlights && 
+                 data.quarterlyReport.managementCommentary.businessHighlights.length > 0 && (
+                  <div className="bg-green-900/20 rounded-lg p-4 border border-green-500/20">
+                    <h5 className="text-base font-semibold text-green-300 mb-3 flex items-center gap-2">
+                      <span className="text-lg">✅</span> Business Highlights
+                    </h5>
+                    <ul className="space-y-2">
+                      {data.quarterlyReport.managementCommentary.businessHighlights.map((highlight: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-green-400 mt-1">•</span>
+                          <span>{highlight}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Challenges */}
+                {data.quarterlyReport.managementCommentary.challenges && 
+                 data.quarterlyReport.managementCommentary.challenges.length > 0 && (
+                  <div className="bg-red-900/20 rounded-lg p-4 border border-red-500/20">
+                    <h5 className="text-base font-semibold text-red-300 mb-3 flex items-center gap-2">
+                      <span className="text-lg">⚠️</span> Challenges
+                    </h5>
+                    <ul className="space-y-2">
+                      {data.quarterlyReport.managementCommentary.challenges.map((challenge: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-red-400 mt-1">•</span>
+                          <span>{challenge}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Opportunities */}
+                {data.quarterlyReport.managementCommentary.opportunities && 
+                 data.quarterlyReport.managementCommentary.opportunities.length > 0 && (
+                  <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-500/20">
+                    <h5 className="text-base font-semibold text-blue-300 mb-3 flex items-center gap-2">
+                      <span className="text-lg">🎯</span> Opportunities
+                    </h5>
+                    <ul className="space-y-2">
+                      {data.quarterlyReport.managementCommentary.opportunities.map((opportunity: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-blue-400 mt-1">•</span>
+                          <span>{opportunity}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+
+                {/* Future Guidance */}
+                {data.quarterlyReport.managementCommentary.futureGuidance && 
+                 data.quarterlyReport.managementCommentary.futureGuidance.length > 0 && (
+                  <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
+                    <h5 className="text-base font-semibold text-purple-300 mb-3 flex items-center gap-2">
+                      <span className="text-lg">🔮</span> Future Guidance
+                    </h5>
+                    <ul className="space-y-2">
+                      {data.quarterlyReport.managementCommentary.futureGuidance.map((guidance: string, idx: number) => (
+                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
+                          <span className="text-purple-400 mt-1">•</span>
+                          <span>{guidance}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Segment Performance - Inferred from metrics */}
+            {data.quarterlyReport.segmentPerformance && 
+             data.quarterlyReport.segmentPerformance.length > 0 && (
+              <div className="bg-gradient-to-br from-cyan-900/20 to-teal-900/20 rounded-lg p-4 border border-cyan-500/20">
+                <h4 className="text-lg font-semibold text-cyan-300 mb-4 flex items-center gap-2">
+                  <span className="text-xl">🏢</span> Segment-wise Performance
+                </h4>
+                <div className="space-y-3">
+                  {data.quarterlyReport.segmentPerformance.map((segment: any, idx: number) => (
+                    <div key={idx} className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                      <div className="flex items-center justify-between mb-2">
+                        <h5 className="text-sm font-semibold text-white">{segment.segment}</h5>
+                        {segment.growth && (
+                          <span className={`text-xs px-2 py-1 rounded ${
+                            parseFloat(segment.growth) >= 0 ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                          }`}>
+                            {segment.growth}
+                          </span>
+                        )}
+                      </div>
+                      {segment.commentary && (
+                        <p className="text-xs text-gray-300 mt-2">{segment.commentary}</p>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Outlook & Competitive Position */}
+            <div className="grid md:grid-cols-2 gap-4">
+              {/* Outlook */}
+              {data.quarterlyReport.outlook && (
+                <div className="bg-gradient-to-br from-indigo-900/20 to-purple-900/20 rounded-lg p-4 border border-indigo-500/20">
+                  <h5 className="text-base font-semibold text-indigo-300 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🔮</span> Forward Outlook
+                  </h5>
+                  
+                  {data.quarterlyReport.outlook.sentiment && (
+                    <div className={`inline-block px-3 py-1 rounded-full text-xs font-semibold mb-3 ${
+                      data.quarterlyReport.outlook.sentiment === 'Positive' ? 'bg-green-900/40 text-green-300 border border-green-500/30' :
+                      data.quarterlyReport.outlook.sentiment === 'Negative' ? 'bg-red-900/40 text-red-300 border border-red-500/30' :
+                      'bg-yellow-900/40 text-yellow-300 border border-yellow-500/30'
+                    }`}>
+                      {data.quarterlyReport.outlook.sentiment}
+                      {data.quarterlyReport.outlook.confidenceLevel && ` • ${data.quarterlyReport.outlook.confidenceLevel} Confidence`}
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.outlook.seasonality && (
+                    <div className="bg-gray-800/30 rounded-lg p-2 mb-3">
+                      <div className="text-xs text-gray-400">Seasonality Insight:</div>
+                      <div className="text-xs text-gray-300 mt-1">{data.quarterlyReport.outlook.seasonality}</div>
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.outlook.nextQuarterExpectation && (
+                    <div className="bg-gray-800/30 rounded-lg p-2 mb-3">
+                      <div className="text-xs text-indigo-400">Next Quarter (Q+1):</div>
+                      <div className="text-xs text-gray-300 mt-1">{data.quarterlyReport.outlook.nextQuarterExpectation}</div>
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.outlook.keyDrivers && data.quarterlyReport.outlook.keyDrivers.length > 0 && (
+                    <div className="mb-2">
+                      <div className="text-xs text-gray-400 mb-1">Key Drivers:</div>
+                      <ul className="space-y-1">
+                        {data.quarterlyReport.outlook.keyDrivers.map((driver: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
+                            <span className="text-indigo-400">▸</span>
+                            <span>{driver}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.outlook.risks && data.quarterlyReport.outlook.risks.length > 0 && (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Risks:</div>
+                      <ul className="space-y-1">
+                        {data.quarterlyReport.outlook.risks.map((risk: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
+                            <span className="text-red-400">⚠</span>
+                            <span>{risk}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Competitive Position */}
+              {data.quarterlyReport.competitivePosition && (
+                <div className="bg-gradient-to-br from-amber-900/20 to-yellow-900/20 rounded-lg p-4 border border-amber-500/20">
+                  <h5 className="text-base font-semibold text-amber-300 mb-3 flex items-center gap-2">
+                    <span className="text-lg">🏆</span> Competitive Position
+                  </h5>
+
+                  {data.quarterlyReport.competitivePosition.operatingLeverage && (
+                    <div className="bg-gray-800/30 rounded-lg p-2 mb-3">
+                      <div className="text-xs text-amber-400">Operating Leverage:</div>
+                      <div className="text-xs text-gray-300 mt-1">{data.quarterlyReport.competitivePosition.operatingLeverage}</div>
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.competitivePosition.competitiveAdvantages && 
+                   data.quarterlyReport.competitivePosition.competitiveAdvantages.length > 0 && (
+                    <div className="mb-3">
+                      <div className="text-xs text-gray-400 mb-1">Competitive Advantages:</div>
+                      <ul className="space-y-1">
+                        {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
+                            <span className="text-green-400">✓</span>
+                            <span>{advantage}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+
+                  {data.quarterlyReport.competitivePosition.industryTrends && 
+                   data.quarterlyReport.competitivePosition.industryTrends.length > 0 && (
+                    <div>
+                      <div className="text-xs text-gray-400 mb-1">Industry Trends:</div>
+                      <ul className="space-y-1">
+                        {data.quarterlyReport.competitivePosition.industryTrends.map((trend: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
+                            <span className="text-amber-400">▸</span>
+                            <span>{trend}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+    </div>    
+      
+</div>
       )}
 </div>
   )}
-

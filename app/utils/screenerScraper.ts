@@ -15,11 +15,12 @@ import * as fs from 'fs';
 import * as path from 'path';
 
 export interface ScreenerTranscript {
+    [x: string]: string | undefined;
     quarter: string;
     date: string;
     content: string;
     url: string;
-    source: 'Screener.in Direct';
+    source: 'Screener.in Direct' | 'Screener.in Quarterly Table';
 }
 
 export interface ScreenerAnnualReport {
@@ -37,11 +38,12 @@ export interface AnnualReportPDFLink {
 
 /**
  * Fetch quarterly earnings transcript from screener.in
+ * Extracts structured data directly from quarterly results table (no PDF parsing)
  */
 export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerTranscript | null> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
-        console.log(`📄 [Screener] Fetching transcript for ${cleanSymbol}...`);
+        console.log(`📄 [Screener] Fetching quarterly results table for ${cleanSymbol}...`);
 
         // Get authenticated session
         const cookies = await getAuthenticatedSession();
@@ -71,62 +73,244 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
             return null;
         }
 
-        const html = await response.text();
-        const $ = load(html);
+        let html = await response.text();
+        let $ = load(html);
 
-        // Look for "Transcript" links (screener.in shows external PDF links)
-        let transcriptUrl: string | null = null;
-        let quarter: string = 'Latest Quarter';
-        let date: string = new Date().toISOString().split('T')[0];
+        // ==========================================
+        // FETCH CONSOLIDATED DATA
+        // ==========================================
+        console.log(`📋 [Screener] Parsing quarterly results table...`);
 
-        // screener.in displays transcript links as external PDFs (BSE, company IR sites)
-        // Look for links with text "Transcript"
-        let foundTranscript = false;
-        $('a:contains("Transcript")').each((i, elem) => {
-            if (!foundTranscript) {
-                const href = $(elem).attr('href') || '';
-                const text = $(elem).text().trim();
-                
-                // Filter for actual transcript PDFs (not just any link with "transcript" text)
-                if (text === 'Transcript' && (href.includes('.pdf') || href.includes('bseindia.com') || href.includes('tcs.com'))) {
-                    transcriptUrl = href;
-                    foundTranscript = true;
-                    
-                    // Try to extract quarter from surrounding context
-                    const row = $(elem).closest('tr');
-                    if (row.length > 0) {
-                        const firstCell = row.find('td').first().text().trim();
-                        if (firstCell) quarter = firstCell;
-                    }
-                    
-                    // Try to extract date from link text or URL
-                    const linkText = href.toLowerCase();
-                    const yearMatch = linkText.match(/20\d{2}/);
-                    if (yearMatch) {
-                        date = `${yearMatch[0]}-01-01`; // Approximate date from year
-                    }
-                }
+        // Check if we need to fetch consolidated view
+        const pageText = $('section:contains("Quarterly Results")').text();
+        const isStandalonePage = pageText.includes('View Consolidated');
+        
+        if (isStandalonePage) {
+            console.log(`🔀 [Switch] Page shows Standalone, fetching Consolidated...`);
+            
+            const consolidatedUrl = `https://www.screener.in/company/${cleanSymbol}/consolidated/`;
+            await waitForRateLimit();
+            
+            const consolidatedResponse = await fetch(consolidatedUrl, {
+                headers: {
+                    'Cookie': cookies,
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+                },
+            });
+            
+            if (consolidatedResponse.ok) {
+                html = await consolidatedResponse.text();
+                $ = load(html);
+                console.log(`✅ [Switch] Now using Consolidated data`);
+            } else {
+                console.warn(`⚠️ [Switch] Failed to fetch consolidated (${consolidatedResponse.status}), using current page`);
             }
-        });
+        } else {
+            console.log(`✅ [Already Consolidated] Page already shows Consolidated data`);
+        }
 
-        if (!transcriptUrl) {
-            console.warn(`⚠️ [Screener] No transcript PDF found for ${cleanSymbol}`);
+        const quarterlySection = $('section:contains("Quarterly Results")');
+        const quarterlyTable = quarterlySection.find('.data-table').first();
+
+        if (quarterlyTable.length === 0) {
+            console.error(`❌ [Screener] No quarterly results table found for ${cleanSymbol}`);
             return null;
         }
 
-        console.log(`📥 [Screener] Found transcript PDF: ${transcriptUrl}`);
-        console.log(`ℹ️ [Screener] PDF transcripts require parsing - letting Gemini Search handle transcript summarization`);
+        console.log(`✅ [Screener] Found quarterly table, extracting data...`);
         
-        // screener.in provides links to transcript PDFs (BSE, company IR sites)
-        // Rather than parsing PDFs, we let Gemini Search handle transcript summarization
-        // This is simpler and Gemini does an excellent job summarizing from web sources
+        // Extract quarter headers (column names)
+        const quarters: string[] = [];
+        quarterlyTable.find('thead tr th').each((i, elem) => {
+            const quarterText = $(elem).text().trim();
+            if (quarterText && i > 0) { // Skip first column (label column)
+                quarters.push(quarterText);
+            }
+        });
         
-        // Return null to trigger Gemini fallback for transcript
-        // (Annual report data from screener.in is still valuable and will be used)
-        return null;
+        if (quarters.length === 0) {
+            console.warn(`⚠️ [Screener] No quarterly data found for ${cleanSymbol}`);
+            return null;
+        }
+        
+        console.log(`📅 [Screener] Found ${quarters.length} quarters:`, quarters);
+        console.log(`📅 [Screener] Latest quarter: ${quarters[quarters.length - 1]}`);
+        
+        // Initialize data structure with arrays
+        const tableData: { [key: string]: number[] } = {
+            sales: [],
+            expenses: [],
+            operatingProfit: [],
+            opm: [],
+            otherIncome: [],
+            interest: [],
+            depreciation: [],
+            profitBeforeTax: [],
+            tax: [],
+            netProfit: [],
+            eps: []
+        };
+        
+        // DEBUG: Print table structure (only if needed)
+        if (process.env.DEBUG_SCRAPER === 'true') {
+            console.log('🔍 [DEBUG] Table HTML:', quarterlyTable.html()?.substring(0, 500));
+        }
+        
+        // Parse each row
+        quarterlyTable.find('tbody tr').each((rowIndex, row) => {
+            const cells = $(row).find('td');
+            const label = cells.eq(0).text().trim();
+            
+            // Map row labels to data keys - USE FLEXIBLE MATCHING
+            let dataKey: string | null = null;
+            const lowerLabel = label.toLowerCase().replace(/\s+/g, ' ').trim();
 
+            if (lowerLabel.includes('sales') || lowerLabel.includes('revenue')) {
+                dataKey = 'sales';
+            } else if (lowerLabel.includes('expenses') || lowerLabel.includes('expenditure')) {
+                dataKey = 'expenses';
+            } else if (lowerLabel.includes('operating profit') || lowerLabel.includes('operating income')) {
+                dataKey = 'operatingProfit';
+            } else if (lowerLabel.includes('opm') || lowerLabel.includes('operating margin')) {
+                dataKey = 'opm';
+            } else if (lowerLabel.includes('other income')) {
+                dataKey = 'otherIncome';
+            } else if (lowerLabel.includes('interest')) {
+                dataKey = 'interest';
+            } else if (lowerLabel.includes('depreciation')) {
+                dataKey = 'depreciation';
+            } else if (lowerLabel.includes('profit before tax') || lowerLabel.includes('pbt')) {
+                dataKey = 'profitBeforeTax';
+            } else if (lowerLabel.includes('tax %') || lowerLabel === 'tax') {
+                dataKey = 'tax';
+            } else if (lowerLabel.includes('net profit') || lowerLabel.includes('profit after tax') || lowerLabel.includes('pat')) {
+                dataKey = 'netProfit';
+            } else if (lowerLabel.includes('eps')) {
+                dataKey = 'eps';
+            }
+            
+            if (dataKey) {
+                // Extract values correctly (skip first cell which is the label)
+                const values: number[] = [];
+                for (let j = 1; j < cells.length; j++) {
+                    const valueText = cells.eq(j).text().trim().replace(/,/g, '').replace(/%/g, '');
+                    const value = parseFloat(valueText);
+                    values.push(isNaN(value) ? 0 : value);
+                }
+                tableData[dataKey] = values;
+                
+                if (process.env.DEBUG_SCRAPER === 'true') {
+                    console.log(`  ✓ [${dataKey}] ${label}: ${values.slice(-3).join(', ')}`);
+                }
+            }
+        });
+        
+        // Verify data extraction
+        console.log(`📊 [Verification] Sales array length: ${tableData.sales.length}, expected: ${quarters.length}`);
+        console.log(`📊 [Latest 3 Quarters] Sales: ${tableData.sales.slice(-3).join(', ')} Cr`);
+        console.log(`📊 [Latest 3 Quarters] Net Profit: ${tableData.netProfit.slice(-3).join(', ')} Cr`);
+        
+        if (tableData.sales.length !== quarters.length) {
+            console.error(`❌ [Data Mismatch] Sales count (${tableData.sales.length}) != Quarters count (${quarters.length})`);
+            return null;
+        }
+        
+        // Get latest quarter data
+        const latestQuarter = quarters[quarters.length - 1];
+        const latestIndex = quarters.length - 1;
+        
+        console.log(`📈 [Latest Quarter ${latestQuarter}]:`);
+        console.log(`   Sales: ₹${tableData.sales[latestIndex]} Cr`);
+        console.log(`   Net Profit: ₹${tableData.netProfit[latestIndex]} Cr`);
+        console.log(`   EPS: ₹${tableData.eps[latestIndex]}`);
+        console.log(`   OPM: ${tableData.opm[latestIndex]}%`);
+        
+        // Helper function to calculate growth with safety checks
+        const calculateGrowth = (current: number, previous: number): number | null => {
+            if (!previous || previous === 0 || !current) return null;
+            return parseFloat(((current - previous) / Math.abs(previous) * 100).toFixed(2));
+        };
+        
+        // Build structured content from table data with growth calculations
+        const content = JSON.stringify({
+            quarter: latestQuarter,
+            quarters: quarters,
+            dataSource: 'Consolidated', // Explicitly mark data source
+            keyMetrics: {
+                revenue: {
+                    value: tableData.sales[latestIndex],
+                    yoyGrowth: latestIndex >= 4 ? 
+                        calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 4]) : null,
+                    qoqGrowth: latestIndex >= 1 ? 
+                        calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 1]) : null,
+                    unit: "Crores"
+                },
+                netProfit: {
+                    value: tableData.netProfit[latestIndex],
+                    yoyGrowth: latestIndex >= 4 ? 
+                        calculateGrowth(tableData.netProfit[latestIndex], tableData.netProfit[latestIndex - 4]) : null,
+                    qoqGrowth: latestIndex >= 1 ? 
+                        calculateGrowth(tableData.netProfit[latestIndex], tableData.netProfit[latestIndex - 1]) : null,
+                    unit: "Crores"
+                },
+                operatingProfit: {
+                    value: tableData.operatingProfit[latestIndex],
+                    yoyGrowth: latestIndex >= 4 ? 
+                        calculateGrowth(tableData.operatingProfit[latestIndex], tableData.operatingProfit[latestIndex - 4]) : null,
+                    qoqGrowth: latestIndex >= 1 ? 
+                        calculateGrowth(tableData.operatingProfit[latestIndex], tableData.operatingProfit[latestIndex - 1]) : null,
+                    unit: "Crores"
+                },
+                eps: {
+                    value: tableData.eps[latestIndex],
+                    yoyGrowth: latestIndex >= 4 ? 
+                        calculateGrowth(tableData.eps[latestIndex], tableData.eps[latestIndex - 4]) : null,
+                    qoqGrowth: latestIndex >= 1 ? 
+                        calculateGrowth(tableData.eps[latestIndex], tableData.eps[latestIndex - 1]) : null
+                },
+                operatingMargin: tableData.opm[latestIndex],
+                netMargin: tableData.sales[latestIndex] > 0 ? 
+                    parseFloat((tableData.netProfit[latestIndex] / tableData.sales[latestIndex] * 100).toFixed(2)) : 0
+            },
+            expenses: {
+                total: tableData.expenses[latestIndex],
+                interest: tableData.interest[latestIndex],
+                depreciation: tableData.depreciation[latestIndex],
+                otherIncome: tableData.otherIncome[latestIndex]
+            },
+            financialRatios: {
+                operatingMargin: tableData.opm[latestIndex],
+                netMargin: tableData.sales[latestIndex] > 0 ? 
+                    parseFloat((tableData.netProfit[latestIndex] / tableData.sales[latestIndex] * 100).toFixed(2)) : 0,
+                taxRate: tableData.tax[latestIndex]
+            },
+            historicalData: {
+                sales: tableData.sales,
+                expenses: tableData.expenses,
+                operatingProfit: tableData.operatingProfit,
+                opm: tableData.opm,
+                netProfit: tableData.netProfit,
+                eps: tableData.eps
+            }
+        }, null, 2);
+        
+        console.log(`✅ [Screener] Extracted CONSOLIDATED quarterly data for ${latestQuarter}`);
+        console.log(`📊 [Growth Verification]:`);
+        console.log(`   Revenue YoY: ${latestIndex >= 4 ? calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 4]) : 'N/A'}%`);
+        console.log(`   Revenue QoQ: ${latestIndex >= 1 ? calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 1]) : 'N/A'}%`);
+        console.log(`   Net Profit YoY: ${latestIndex >= 4 ? calculateGrowth(tableData.netProfit[latestIndex], tableData.netProfit[latestIndex - 4]) : 'N/A'}%`);
+        console.log(`   Net Profit QoQ: ${latestIndex >= 1 ? calculateGrowth(tableData.netProfit[latestIndex], tableData.netProfit[latestIndex - 1]) : 'N/A'}%`);
+        
+        return {
+            quarter: latestQuarter,
+            date: new Date().toISOString().split('T')[0],
+            content: content,
+            url: companyUrl,
+            source: 'Screener.in Quarterly Table'
+        };
+        
     } catch (error: any) {
-        console.error(`❌ [Screener] Error fetching transcript:`, error.message);
+        console.error(`❌ [Screener Transcript] Error:`, error.message);
         return null;
     }
 }
@@ -892,3 +1076,7 @@ export async function fetchScreenerFundamentals(symbol: string) {
         return null;
     }
 }
+
+
+
+
