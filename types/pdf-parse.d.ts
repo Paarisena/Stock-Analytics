@@ -28,4 +28,6 @@ declare module 'pdf-parse' {
         WARNINGS: number;
         INFOS: number;
     };
+
+
 }

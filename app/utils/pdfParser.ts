@@ -1,10 +1,11 @@
 /**
- * PDF Parser Utility
- * Downloads and extracts text from PDF files using pdf2json (Node.js-native)
+ * PDF Parser Utility - Dual library approach
+ * Primary: pdf2json (for annual reports)
+ * Fallback: pdf-parse (for problematic transcripts)
  */
 
 import PDFParser from 'pdf2json';
-import { Readable } from 'stream';
+import * as pdfParse from 'pdf-parse';
 
 export interface PDFParseResult {
     text: string;
@@ -16,9 +17,14 @@ export interface PDFParseResult {
  * Download and parse a PDF from a URL
  * @param url - PDF URL (BSE India, NSE India, etc.)
  * @param cookies - Optional session cookies for authenticated access
+ * @param useFallback - Use pdf-parse instead of pdf2json (for problematic PDFs)
  * @returns Extracted text and metadata
  */
-export async function downloadAndParsePDF(url: string, cookies?: string): Promise<PDFParseResult> {
+export async function downloadAndParsePDF(
+    url: string, 
+    cookies?: string,
+    useFallback: boolean = false
+): Promise<PDFParseResult> {
     console.log(`📥 [PDF Parser] Downloading PDF from ${url.substring(0, 60)}...`);
     
     try {
@@ -60,36 +66,55 @@ export async function downloadAndParsePDF(url: string, cookies?: string): Promis
             throw new Error(`PDF too large: ${fileSizeMB} MB (max 50 MB)`);
         }
         
-        // Parse PDF with pdf2json
-        console.log(`🔍 [PDF Parser] Extracting text from PDF...`);
+        // ============================================
+        // FALLBACK: Use pdf-parse for problematic PDFs
+        // ============================================
+        if (useFallback) {
+            console.log(`🔄 [PDF Parser] Using pdf-parse (fallback method)...`);
+            const startTime = Date.now();
+            
+            const data = await (pdfParse as any).default(buffer);
+            
+            const parseTime = ((Date.now() - startTime) / 1000).toFixed(1);
+            const textLength = data.text.length;
+            const isImageBased = textLength < 1000;
+            
+            console.log(`✅ [PDF Parse] Extracted ${textLength.toLocaleString()} characters from ${data.numpages} pages in ${parseTime}s`);
+            
+            if (isImageBased) {
+                console.warn(`⚠️ [PDF Parse] PDF appears to be image-based (${textLength} chars) - OCR required`);
+            }
+            
+            return {
+                text: data.text,
+                pageCount: data.numpages,
+                isImageBased,
+            };
+        }
+        
+        // ============================================
+        // PRIMARY: Use pdf2json (default)
+        // ============================================
+        console.log(`🔍 [PDF Parser] Extracting text with pdf2json (primary method)...`);
         const startTime = Date.now();
         
-        const pdfParser = new PDFParser(null, true); // true = verbose mode off
+        const pdfParser = new PDFParser(null, true);
         
-        // Parse PDF from buffer
         const parsePromise = new Promise<string>((resolve, reject) => {
             let fullText = '';
-            let pageCount = 0;
             
             pdfParser.on('pdfParser_dataReady', (pdfData: any) => {
-
-                
                 try {
-                    // Extract text from all pages
                     if (pdfData.Pages && Array.isArray(pdfData.Pages)) {
-                        pageCount = pdfData.Pages.length;
-                        
                         for (const page of pdfData.Pages) {
                             if (page.Texts && Array.isArray(page.Texts)) {
                                 for (const text of page.Texts) {
                                     if (text.R && Array.isArray(text.R)) {
                                         for (const run of text.R) {
                                             if (run.T) {
-                                                // Decode URI-encoded text, handle malformed URIs
                                                 try {
                                                     fullText += decodeURIComponent(run.T) + ' ';
                                                 } catch {
-                                                    // If URI is malformed, use raw text
                                                     fullText += run.T + ' ';
                                                 }
                                             }
@@ -100,7 +125,6 @@ export async function downloadAndParsePDF(url: string, cookies?: string): Promis
                             }
                         }
                     }
-                    
                     resolve(fullText);
                 } catch (error: any) {
                     reject(new Error(`Failed to extract text: ${error.message}`));
@@ -111,7 +135,10 @@ export async function downloadAndParsePDF(url: string, cookies?: string): Promis
                 reject(new Error(error.parserError || 'PDF parsing failed'));
             });
             
-            // Parse the buffer
+            setTimeout(() => {
+                reject(new Error('PDF parsing timeout after 60s'));
+            }, 60000);
+            
             pdfParser.parseBuffer(buffer);
         });
         
@@ -119,14 +146,12 @@ export async function downloadAndParsePDF(url: string, cookies?: string): Promis
         const parseTime = ((Date.now() - startTime) / 1000).toFixed(1);
         const textLength = fullText.length;
         const isImageBased = textLength < 1000;
-        
-        // Get page count from parsed data
         const pageCount = (pdfParser as any).data?.Pages?.length || 0;
         
-        console.log(`✅ [PDF Parser] Extracted ${textLength.toLocaleString()} characters from ${pageCount} pages in ${parseTime}s`);
+        console.log(`✅ [PDF2JSON] Extracted ${textLength.toLocaleString()} characters from ${pageCount} pages in ${parseTime}s`);
         
         if (isImageBased) {
-            console.warn(`⚠️ [PDF Parser] PDF appears to be image-based (${textLength} chars) - OCR required`);
+            console.warn(`⚠️ [PDF2JSON] PDF appears to be image-based (${textLength} chars) - OCR required`);
         }
         
         return {

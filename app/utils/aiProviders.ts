@@ -229,6 +229,79 @@ export async function callGeminiAPI<T = string>(
 }
 
 // ========================
+// GEMINI PDF ANALYSIS (For Transcripts)
+// ========================
+
+interface GeminiPDFOptions {
+    model?: string;
+    temperature?: number;
+    maxTokens?: number;
+}
+
+/**
+ * Analyze PDF directly with Gemini 2.5 Flash
+ * Uses native PDF reading - no extraction needed
+ * Perfect for earnings call transcripts - eliminates OCR data mismatches
+ */
+export async function callGeminiWithPDF(
+    pdfUrl: string,
+    prompt: string,
+    options: GeminiPDFOptions = {}
+): Promise<string> {
+    const {
+        model = 'gemini-2.5-flash',
+        temperature = 0.2,
+        maxTokens = 16000,
+    } = options;
+
+    try {
+        console.log(`📄 [Gemini PDF] Downloading PDF from ${pdfUrl.substring(0, 80)}...`);
+        
+        // Download PDF
+        const pdfResponse = await fetch(pdfUrl, {
+            headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        });
+
+        if (!pdfResponse.ok) {
+            throw new Error(`Failed to download PDF: HTTP ${pdfResponse.status}`);
+        }
+
+        const arrayBuffer = await pdfResponse.arrayBuffer();
+        const base64Pdf = Buffer.from(arrayBuffer).toString('base64');
+        const fileSizeMB = (arrayBuffer.byteLength / (1024 * 1024)).toFixed(2);
+        
+        console.log(`✅ [Gemini PDF] Downloaded ${fileSizeMB} MB`);
+        console.log(`🤖 [Gemini PDF] Analyzing with ${model}...`);
+
+        // Create model instance
+        const genModel = gemini.getGenerativeModel({ model });
+
+        // Send PDF with prompt using inline data
+        const result = await genModel.generateContent([
+            { text: prompt },
+            {
+                inlineData: {
+                    data: base64Pdf,
+                    mimeType: 'application/pdf'
+                }
+            }
+        ]);
+
+        const content = result.response.text();
+        
+        console.log(`✅ [Gemini PDF] Analysis complete (${content.length} chars)`);
+        
+        return content;
+        
+    } catch (error: any) {
+        console.error('❌ [Gemini PDF] Error:', error.message);
+        throw new Error(`Failed to analyze PDF: ${error.message}`);
+    }
+}
+
+// ========================
 // BATCH PERPLEXITY CALL
 // ========================
 
@@ -268,3 +341,8 @@ export async function callGeminiAPI<T = string>(
 //         return null;
 //     }
 // }
+
+// ========================
+// GEMINI PDF ANALYSIS (For Transcripts)
+// ========================
+

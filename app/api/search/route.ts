@@ -1,6 +1,6 @@
 ﻿import { NextRequest, NextResponse } from "next/server";
 import connectToDatabase from "@/DB/MongoDB";
-import {AnnualReportCache,QuarterlyReportCache} from "@/DB/Model";
+import {AnnualReportCache,QuarterlyReportCache,EarningsCallCache} from "@/DB/Model";
 import OpenAI from "openai";
 
 import Groq from "groq-sdk";
@@ -709,14 +709,179 @@ Begin analysis now.`;
     }
 }
 
- // ========================
-// HELPER: EXTRACT QUARTERLY INSIGHTS (Separate function to avoid token limit issues)
-// ========================
+async function extractEarningsCallInsights(
+    cleanSymbol: string,
+    transcriptText: string,
+    metadata: {
+        quarter: string;
+        fiscalYear: string;
+        callDate: string;
+        companyName?: string;
+        pdfUrl?: string;
+        extractedText?: string;
+    }
+): Promise<any> {
+    console.log(`📞 [Earnings Call] Analyzing ${metadata.quarter} FY${metadata.fiscalYear} conference call...`);
+    
+    const earningsCallPrompt = `Extract structured insights from this earnings call transcript.
+
+COMPANY: ${metadata.companyName || cleanSymbol}
+QUARTER: ${metadata.quarter} FY${metadata.fiscalYear}
+
+TRANSCRIPT:
+${transcriptText}
+
+---
+
+Extract and return JSON with:
+
+1. SENTIMENT: Bullish/Neutral/Bearish based on tone and guidance
+2. FINANCIAL HIGHLIGHTS: Revenue, profit, margins, cash flow, debt (with YoY growth %)
+3. OPERATIONAL HIGHLIGHTS: Volume metrics, order book, capacity utilization
+4. MANAGEMENT COMMENTARY: List 5-10 key business highlights, challenges, opportunities, and future guidance
+5. Q&A INSIGHTS: List 5-7 critical questions and answers. Flag red flags if any.
+6. SEGMENT PERFORMANCE: Array of segments with revenue/margin/outlook
+7. COMPETITIVE POSITION: Market share trends, advantages, industry outlook
+8. INVESTMENT THESIS: 3-5 bull case points, 3-5 bear case points, recommendation (BUY/HOLD/SELL)
+9. KEY TAKEAWAYS: 5-7 bullet points summarizing actionable insights
+
+OUTPUT (JSON only, no markdown):
+{
+  "companyName": "${metadata.companyName || cleanSymbol}",
+  "symbol": "${cleanSymbol}",
+  "quarter": "${metadata.quarter}",
+  "fiscalYear": "${metadata.fiscalYear}",
+  "callDate": "${metadata.callDate}",
+  "sentiment": "Bullish|Neutral|Bearish",
+  "financialHighlights": {
+    "revenue": {"value": 5000, "yoyGrowth": 12.5, "guidance": "Expected 15% growth"},
+    "ebitda": {"value": 800, "margin": 16, "trend": "improving"},
+    "netProfit": {"value": 500, "yoyGrowth": 18},
+    "orderBook": {"total": 25000, "newOrders": 3000},
+    "cashFlow": {"operating": 600, "free": 400},
+    "debt": {"netDebt": 2000, "netDebtToEBITDA": 2.5}
+  },
+  "operationalHighlights": {
+    "volumeMetrics": {"production": 1000, "sales": 950},
+    "capacityUtilization": 85,
+    "keyProjects": ["Project A - 40% complete", "Project B - commissioning in Q4"]
+  },
+  "managementCommentary": {
+    "businessHighlights": ["Strong order inflows", "Market share gain", "etc"],
+    "challenges": ["Rising input costs", "etc"],
+    "opportunities": ["New geography expansion", "etc"],
+    "futureGuidance": {
+      "revenueTarget": "20,000 Cr for FY26",
+      "marginOutlook": "EBITDA margin expected 17-18%",
+      "capexPlan": "1,500 Cr planned",
+      "orderInflowTarget": "8,000 Cr target"
+    }
+  },
+  "qAndAInsights": {
+    "keyQuestions": ["What is the order book breakdown?", "etc"],
+    "keyAnswers": ["Road projects: 60%, Rail: 40%", "etc"],
+    "redFlags": ["Evasive on margin pressure question", "etc"]
+  },
+  "segmentPerformance": [
+    {"segment": "Roads", "revenue": 3000, "margin": 18, "outlook": "Strong"}
+  ],
+  "competitivePosition": {
+    "marketShareTrend": "Gaining share in roads segment",
+    "competitiveAdvantages": ["Low bid costs", "Strong execution"],
+    "industryTrends": ["Govt capex support", "etc"]
+  },
+  "investmentThesis": {
+    "bullCase": ["Strong order book visibility", "Margin expansion", "etc"],
+    "bearCase": ["Execution risks", "Working capital pressure", "etc"],
+    "recommendation": {
+      "signal": "BUY",
+      "confidence": "High",
+      "timeframe": "12 months",
+      "triggers": ["Order inflow >5000 Cr", "Margin >17%"]
+    }
+  },
+  "keyTakeaways": ["Q3 revenue up 15% YoY", "Order book at 25,000 Cr", "etc"],
+  "summary": "Strong quarter with robust order inflows and margin expansion. Management confident on FY26 guidance."
+}
+
+RULES:
+- Use actual numbers from transcript (not examples above)
+- If data missing, use null for numbers, [] for arrays
+- Be specific with quotes and figures
+- Return ONLY valid JSON (no markdown, no extra text)
+
+Begin analysis now.`;
+
+    try {
+        const result = await callGeminiAPI(earningsCallPrompt, {
+            temperature: 0.2,
+            maxTokens: 15000
+        });
+
+        // Strip markdown code blocks before parsing
+        let cleanedResult = result.trim();
+        
+        if (cleanedResult.startsWith('```json')) {
+            cleanedResult = cleanedResult.replace(/^```json\s*\n?/, '').replace(/\n?```\s*$/, '');
+        } else if (cleanedResult.startsWith('```')) {
+            cleanedResult = cleanedResult.replace(/^```\s*\n?/, '').replace(/\n?```\s*$/, '');
+        }
+        
+        console.log(`📝 [Earnings Call] Cleaned response (first 200 chars):`, cleanedResult.substring(0, 200));
+
+        const earningsInsights = JSON.parse(cleanedResult);
+        
+        // Store PDF URL and extracted text in the insights object
+        earningsInsights.pdfUrl = metadata.pdfUrl;
+        earningsInsights.extractedText = metadata.extractedText;
+        
+        console.log(`🔍 [DEBUG] After storing in insights:`, {
+            hasPdfUrl: !!earningsInsights.pdfUrl,
+            pdfUrlLength: earningsInsights.pdfUrl?.length || 0,
+            hasExtractedText: !!earningsInsights.extractedText,
+            extractedTextLength: earningsInsights.extractedText?.length || 0
+        });
+        try {
+            await connectToDatabase();
+            
+            await EarningsCallCache.findOneAndUpdate(
+                { 
+                    symbol: cleanSymbol, 
+                    quarter: metadata.quarter, 
+                    fiscalYear: metadata.fiscalYear,
+                    source: 'Earnings Call Transcript'
+                },
+                {
+                    $set: {
+                        data: earningsInsights,
+                        rawTranscript: transcriptText,
+                        source: 'Earnings Call Transcript',
+                        fetchedAt: new Date(),
+                        expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000)
+                    }
+                },
+                { upsert: true }
+            );
+            console.log(`💾 [MongoDB Earnings] Saved ${metadata.quarter} FY${metadata.fiscalYear} (90d TTL)`);
+        } catch (dbSaveError: any) {
+            console.warn(`⚠️ [MongoDB Earnings] Save failed: ${dbSaveError.message}`);
+        }
+        
+        return earningsInsights;
+        
+    } catch (extractError: any) {
+        console.error(`❌ [Earnings Call] Analysis failed:`, extractError.message);
+        console.error(`   Stack:`, extractError.stack);
+        return null;
+    }
+}
+
 
 async function mcpGetIndianComprehensiveData(
     symbol: string, 
     forceRefresh: boolean = false,
-    forceRefreshQuarterly: boolean = false
+    forceRefreshQuarterly: boolean = false,
+    forceRefreshEarningsCall: boolean = false
 ) {
     const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
     
@@ -779,17 +944,41 @@ async function mcpGetIndianComprehensiveData(
                 console.warn(`⚠️ [MongoDB Quarterly] Cache check failed: ${dbError.message}`);
             }
         }
+
+        let earningsCallInsights = null;
+        let earningsCallFromCache = false;
+
+        if (!forceRefreshEarningsCall) {
+        await connectToDatabase();
+        try {
+            const cachedEarningsCall = await EarningsCallCache.findOne({
+                symbol: cleanSymbol,
+                expiresAt: { $gt: new Date() }
+            }).sort({ callDate: -1 }).limit(1);
+            
+            if (cachedEarningsCall) {
+                earningsCallInsights = cachedEarningsCall.data;
+                earningsCallFromCache = true;
+                console.log(`💾 [MongoDB Earnings Call] Using cached data (${cachedEarningsCall.quarter} FY${cachedEarningsCall.fiscalYear})`);
+            } else {
+                console.log(`🔄 [MongoDB Earnings Call] No cached data found`);
+            }
+        } catch (dbError: any) {
+            console.warn(`⚠️ [MongoDB Earnings Call] Cache check failed: ${dbError.message}`);
+        }
+    }
         
         // ============================================
         // PHASE 3: IF BOTH CACHED, RETURN EARLY
         // ============================================
-        if (annualFromCache && quarterlyFromCache) {
+        if (annualFromCache && quarterlyFromCache && earningsCallFromCache) {
             console.log(`💾 [MongoDB] Both annual + quarterly cached for ${cleanSymbol}`);
             return {
                 transcript: rawTranscript,
                 annualReport: '',
                 annualReportInsights: annualReportInsights,
                 quarterlyInsights: quarterlyInsights,
+                earningsCallInsights: earningsCallInsights,
                 fromCache: true,
                 quarter: quarter,
                 source: 'MongoDB Cache',
@@ -808,6 +997,15 @@ async function mcpGetIndianComprehensiveData(
         
         const { fetchScreenerComprehensiveData } = await import('../../utils/screenerScraper');
         const screenerData = await fetchScreenerComprehensiveData(symbol);
+        
+        console.log('🔍 [DEBUG] Screener data structure:', {
+            hasTranscript: !!screenerData.transcript,
+            hasAnnualReport: !!screenerData.annualReport,
+            hasConcallTranscript: !!screenerData.concallTranscript,
+            concallUrl: screenerData.concallTranscript?.url?.substring(0, 100),
+            concallContentLength: screenerData.concallTranscript?.content?.length,
+            concallQuarter: screenerData.concallTranscript?.quarter
+        });
         
         let annualReport = '';
 
@@ -836,6 +1034,27 @@ async function mcpGetIndianComprehensiveData(
             
             // Add delay to respect rate limits
             await new Promise(resolve => setTimeout(resolve, 10000));
+        }
+
+        if (!earningsCallFromCache && screenerData.concallTranscript) {
+            console.log(`📞 [Earnings Call] Found transcript: ${screenerData.concallTranscript.quarter}`);
+            console.log('🔍 [DEBUG] Concall data:', {
+                hasUrl: !!screenerData.concallTranscript.url,
+                url: screenerData.concallTranscript.url,
+                quarter: screenerData.concallTranscript.quarter,
+                fiscalYear: screenerData.concallTranscript.fiscalYear
+            });
+            
+            // Store just the URL - no AI extraction during search
+            earningsCallInsights = {
+                quarter: screenerData.concallTranscript.quarter,
+                fiscalYear: screenerData.concallTranscript.fiscalYear,
+                callDate: new Date().toISOString().split('T')[0],
+                pdfUrl: screenerData.concallTranscript.url,
+                source: 'Screener.in Concalls'
+            };
+            
+            console.log('✅ [Earnings Call] URL stored for on-demand summarization');
         }
 
         // ============================================
@@ -2383,7 +2602,8 @@ if (extractedInsights) {
             annualReport: annualReport,
             annualReportInsights: annualReportInsights,
             quarterlyInsights: quarterlyInsights,
-            fromCache: annualFromCache && quarterlyFromCache,
+            earningsCallInsights: earningsCallInsights,
+            fromCache: annualFromCache && quarterlyFromCache && earningsCallFromCache,
             quarter: quarter,
             source: 'Screener.in Direct + BSE India PDF',
             screenerSource: true
@@ -2441,7 +2661,7 @@ function generateLongTermChart(
 // HELPER: BUILD COMPLETE STOCK DATA WITH FULL AI ANALYSIS
 // ========================
 
-async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean = false, forceRefresh: boolean = false, forceRefreshQuarterly: boolean = false) {
+async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean = false, forceRefresh: boolean = false, forceRefreshQuarterly: boolean = false, forceRefreshEarningsCall: boolean = false) {
     try {
         console.log(`🔨 [Build] Constructing complete stock data for ${symbol}...`);
         
@@ -2479,7 +2699,7 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
         if (isIndianStock) {
             console.log(`📊 [Comprehensive] Fetching quarterly transcripts and annual reports using Gemini...`);
             try {
-                    comprehensiveData = await mcpGetIndianComprehensiveData(symbol,forceRefresh,forceRefreshQuarterly);
+                    comprehensiveData = await mcpGetIndianComprehensiveData(symbol,forceRefresh,forceRefreshQuarterly,forceRefreshEarningsCall);
     console.log(`🔍 [DEBUG] Raw comprehensiveData:`, comprehensiveData);
     console.log(`🔍 [DEBUG] Type:`, typeof comprehensiveData);
     console.log(`🔍 [DEBUG] Is null:`, comprehensiveData === null);
@@ -2737,7 +2957,40 @@ Provide detailed analysis in this EXACT JSON format:
         source: comprehensiveData.source || 'Screener.in',
         fromCache: comprehensiveData.fromCache
     }
-})
+}),
+
+...(comprehensiveData?.earningsCallInsights && (() => {
+    console.log(`🔍 [DEBUG] Building earningsCall response:`, {
+        hasPdfUrl: !!comprehensiveData.earningsCallInsights.pdfUrl,
+        pdfUrlLength: comprehensiveData.earningsCallInsights.pdfUrl?.length || 0,
+        pdfUrlPreview: comprehensiveData.earningsCallInsights.pdfUrl?.substring(0, 100),
+        hasExtractedText: !!comprehensiveData.earningsCallInsights.extractedText,
+        extractedTextLength: comprehensiveData.earningsCallInsights.extractedText?.length || 0,
+        quarter: comprehensiveData.earningsCallInsights.quarter
+    });
+    
+    return {
+    earningsCall: {
+        quarter: comprehensiveData.earningsCallInsights.quarter,
+        fiscalYear: comprehensiveData.earningsCallInsights.fiscalYear,
+        callDate: comprehensiveData.earningsCallInsights.callDate,
+        pdfUrl: comprehensiveData.earningsCallInsights.pdfUrl,
+        extractedText: comprehensiveData.earningsCallInsights.extractedText,
+        sentiment: comprehensiveData.earningsCallInsights.sentiment,
+        financialHighlights: comprehensiveData.earningsCallInsights.financialHighlights,
+        operationalHighlights: comprehensiveData.earningsCallInsights.operationalHighlights,
+        managementCommentary: comprehensiveData.earningsCallInsights.managementCommentary,
+        qAndAInsights: comprehensiveData.earningsCallInsights.qAndAInsights,
+        segmentPerformance: comprehensiveData.earningsCallInsights.segmentPerformance,
+        competitivePosition: comprehensiveData.earningsCallInsights.competitivePosition,
+        investmentThesis: comprehensiveData.earningsCallInsights.investmentThesis,
+        keyTakeaways: comprehensiveData.earningsCallInsights.keyTakeaways,
+        summary: comprehensiveData.earningsCallInsights.summary,
+        source: 'Screener.in Concalls',
+        fromCache: comprehensiveData.fromCache
+    }
+    };
+})())
         };
         
         // Cache the result
@@ -2813,7 +3066,15 @@ function getDefaultPredictions(currentPrice: number) {
 
 export async function POST(request: NextRequest) {
     try {
-        const { query, model, conversation, skipAI, forceRefresh , forceRefreshQuarterly} = await request.json();
+        const { 
+            query, 
+            model, 
+            conversation, 
+            skipAI, 
+            forceRefresh, 
+            forceRefreshQuarterly,
+            forceRefreshEarningsCall
+        } = await request.json();
         
         if (!query) {
             return NextResponse.json({ error: 'Query required' }, { status: 400 });

@@ -27,7 +27,7 @@ export interface ScreenerAnnualReport {
     fiscalYear: string;
     content: string;
     url: string;
-    source: 'Screener.in Direct' | 'BSE PDF' | 'BSE PDF (OCR)';
+    source: 'Screener.in Direct' | 'BSE PDF' | 'BSE PDF (OCR)' | 'Screener.in Concalls (Cached)';
 }
 
 export interface AnnualReportPDFLink {
@@ -594,16 +594,26 @@ export async function fetchAnnualReportFromPDF(
             
             if (ageInDays < 90) {
                 const cachedText = fs.readFileSync(cacheFile, 'utf-8');
-                console.log(`✅ [PDF Cache] Using cached PDF text (${ageInDays.toFixed(0)} days old, ${cachedText.length} chars)`);
                 
-                return {
-                    fiscalYear: normalizedFY,
-                    content: cachedText,
-                    url: cacheFile,
-                    source: 'BSE PDF'
-                };
-            } else {
-                console.log(`🔄 [PDF Cache] Cache expired (${ageInDays.toFixed(0)} days old)`);
+                // VALIDATE CACHED CONTENT BEFORE USING IT
+                const startsWithPDF = cachedText.trimStart().startsWith('%PDF');
+                const hasBinaryChars = /[\x00-\x08\x0E-\x1F]/.test(cachedText.substring(0, 1000));
+                const hasReadableText = /\b(the|and|to|of|a|in|is|for|on|with|as|by)\b/i.test(cachedText.substring(0, 2000));
+                
+                if (startsWithPDF || hasBinaryChars || !hasReadableText) {
+    console.warn(`⚠️ [Annual Report Cache] Cached file contains binary data, deleting and refetching...`);
+    fs.unlinkSync(cacheFile);
+    // Continue to fresh extraction below
+} else {
+    console.log(`✅ [Annual Report Cache] Using cached report (${ageInDays.toFixed(0)} days old, ${cachedText.length} chars)`);
+    
+    return {
+        fiscalYear: normalizedFY,
+        content: cachedText,
+        url: '', // We don't have URL from cache, but that's OK
+        source: 'Screener.in Direct'
+    };
+}
             }
         }
 
@@ -730,25 +740,132 @@ export async function fetchAnnualReportFromPDF(
 }
 
 /**
- * Fetch comprehensive company data (transcript + annual report)
+ * Fetch conference call transcript from Screener.in Documents section
+ * Uses same pattern as annual report PDF fetching
+ */
+export async function fetchConferenceCallTranscript(symbol: string): Promise<{
+    quarter: string;
+    fiscalYear: string;
+    content: string;
+    url: string;
+    source: string;
+} | null> {
+    try {
+        const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
+        console.log(`📞 [Concall] Fetching transcript link for ${cleanSymbol}...`);
+
+        // Get authenticated session
+        const cookies = await getAuthenticatedSession();
+        if (!cookies) {
+            console.error('❌ [Concall] Authentication failed');
+            return null;
+        }
+
+        // Fetch company page to find transcript link
+        await waitForRateLimit();
+        
+        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/`;
+        const response = await fetch(companyUrl, {
+            headers: {
+                'Cookie': cookies,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        });
+
+        if (!response.ok) {
+            console.error(`❌ [Concall] Failed to fetch ${companyUrl}: ${response.status}`);
+            return null;
+        }
+
+        const html = await response.text();
+        const $ = load(html);
+
+        // Find the "Transcript" link in the Concalls section
+        let transcriptUrl: string | null = null;
+        let quarter = 'Latest';
+        let fiscalYear = new Date().getFullYear().toString();
+
+        $('a').each((i, elem) => {
+            const linkText = $(elem).text().trim();
+            const href = $(elem).attr('href');
+            
+            // Look for link with text "Transcript"
+            if (linkText.toLowerCase() === 'transcript' && href) {
+                transcriptUrl = href.startsWith('http') ? href : `https://www.screener.in${href}`;
+                
+                // Try to extract quarter info from surrounding text
+                const parentText = $(elem).parent().text();
+                const fyMatch = parentText.match(/\bQ([1-4])\s+FY\s*'?(\d{2,4})\b/i);
+                
+                if (fyMatch) {
+                    quarter = `Q${fyMatch[1]}`;
+                    fiscalYear = fyMatch[2].length === 2 ? `20${fyMatch[2]}` : fyMatch[2];
+                }
+                
+                console.log(`✅ [Concall] Found transcript link: ${transcriptUrl}`);
+                console.log(`📅 [Concall] Quarter: ${quarter} FY${fiscalYear}`);
+                return false; // Stop after finding first transcript
+            }
+        });
+
+        if (!transcriptUrl) {
+            console.warn(`⚠️ [Concall] No transcript link found for ${cleanSymbol}`);
+            return null;
+        }
+
+        // Return just the URL - no content extraction
+        const result = {
+            quarter,
+            fiscalYear,
+            content: '', // Empty - will be extracted on-demand when user clicks "AI Summarize"
+            url: transcriptUrl,
+            source: 'Screener.in Concalls'
+        };
+        
+        console.log('✅ [Concall] Returning transcript link:', {
+            quarter: result.quarter,
+            fiscalYear: result.fiscalYear,
+            url: result.url
+        });
+        
+        return result;
+
+    } catch (error: any) {
+        console.error(`❌ [Concall] Error:`, error.message);
+        return null;
+    }
+}
+
+/**
+ * Fetch comprehensive company data (quarterly + annual + concall)
  */
 export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
     transcript: ScreenerTranscript | null;
     annualReport: ScreenerAnnualReport | null;
+    concallTranscript?: {
+        [x: string]: string;
+        quarter: string;
+        content: string;
+        url: string;
+        source: string;
+    } | null;
 }> {
     console.log(`🔍 [Screener] Fetching comprehensive data for ${symbol}...`);
 
-    // Fetch both in sequence (with rate limiting built-in)
     const transcript = await fetchScreenerTranscript(symbol);
     const annualReport = await fetchScreenerAnnualReport(symbol);
+    const concallTranscript = await fetchConferenceCallTranscript(symbol);
 
-    const success = (transcript || annualReport) ? '✅' : '⚠️';
+    const success = (transcript || annualReport || concallTranscript) ? '✅' : '⚠️';
     console.log(`${success} [Screener] Comprehensive fetch complete:`, {
-        hasTranscript: !!transcript,
+        hasQuarterlyData: !!transcript,
         hasAnnualReport: !!annualReport,
+        hasConcallTranscript: !!concallTranscript,
+        concallUrl: concallTranscript?.url,
+        concallQuarter: concallTranscript?.quarter
     });
 
-    return { transcript, annualReport };
+    return { transcript, annualReport, concallTranscript };
 }
 
 /**

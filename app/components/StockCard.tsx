@@ -5,6 +5,7 @@ import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceL
 import ComprehensiveReportCard from './ComprehensiveReportCard';
 import { callGeminiAPI } from '../utils/aiProviders';
 import AnnualReportAccordion from './AnnualReportAccordion';
+import TranscriptPDFViewer from './TranscriptPDFViewer';
 
 // Helper function to safely render balance sheet values
 const renderValue = (value: any, fallback?: any): string | number => {
@@ -51,6 +52,7 @@ interface StockData {
   comprehensiveData: any;
   type: 'stock';
   symbol: string;
+  companyName?: string;
   current: {
     price: number;
     change: number;
@@ -144,6 +146,7 @@ interface StockData {
     isNewEarnings?: boolean;
   };
   annualReport?: any;
+  earningsCall?: any;
   aiIntelligence?: any;
   supportResistance?: {
     pivot: number;
@@ -1206,6 +1209,29 @@ export default function StockCard({ data }: { data: StockData }) {
         longTermConfidence={data.aiIntelligence?.longTermConfidence}
       />
 
+      {/* Earnings Call Transcript PDF Viewer */}
+      {(() => {
+        console.log('🔍 [Frontend] Earnings call data:', {
+          hasEarningsCall: !!data.earningsCall,
+          hasPdfUrl: !!data.earningsCall?.pdfUrl,
+          pdfUrlLength: data.earningsCall?.pdfUrl?.length || 0,
+          pdfUrlPreview: data.earningsCall?.pdfUrl?.substring(0, 100),
+          quarter: data.earningsCall?.quarter
+        });
+        return null;
+      })()}
+      {data.earningsCall?.pdfUrl && (
+        <div className="mb-6">
+          <TranscriptPDFViewer
+            pdfUrl={data.earningsCall.pdfUrl}
+            quarter={data.earningsCall.quarter || 'Latest'}
+            fiscalYear={data.earningsCall.fiscalYear || new Date().getFullYear().toString()}
+            symbol={data.symbol}
+            companyName={data.companyName}
+          />
+        </div>
+      )}
+
       {/* Technical Indicators Section */}
       <div className="mb-6">
         <div className="bg-gradient-to-br from-indigo-900/30 to-indigo-800/20 rounded-2xl p-5 border border-indigo-500/30 shadow-lg shadow-indigo-500/5">
@@ -1453,7 +1479,7 @@ export default function StockCard({ data }: { data: StockData }) {
                     {currencySymbol}{currency === 'INR' ? (data.fundamentals.cash / 1e7).toFixed(2) + ' Cr' : (data.fundamentals.cash / 1e9).toFixed(2) + 'B'}
                   </div>
                 </div>
-              )}
+                           )}
               {data.fundamentals.totalDebt && (
                 <div className="bg-gray-800/40 rounded-lg p-3">
                   <div className="text-xs text-gray-400 mb-1">Total Debt</div>
@@ -2345,12 +2371,14 @@ export default function StockCard({ data }: { data: StockData }) {
                         <span>🛡️</span> Internal Financial Controls (Annexure {data.annualReport.auditInformation.internalFinancialControls.annexure})
                       </h5>
                       <div className="space-y-3 text-sm">
-                        <div className="flex justify-between items-center">
-                          <span className="text-slate-400">Opinion:</span>
-                          <span className={`font-semibold ${data.annualReport.auditInformation.internalFinancialControls.opinion.toLowerCase().includes('adequate') ? 'text-green-300' : 'text-red-300'}`}>
-                            {data.annualReport.auditInformation.internalFinancialControls.opinion}
-                          </span>
-                        </div>
+                        {data.annualReport.auditInformation.internalFinancialControls.opinion && (
+                          <div className="flex justify-between items-center">
+                            <span className="text-slate-400">Opinion:</span>
+                            <span className={`font-semibold ${data.annualReport.auditInformation.internalFinancialControls.opinion.toLowerCase().includes('adequate') ? 'text-green-300' : 'text-red-300'}`}>
+                              {data.annualReport.auditInformation.internalFinancialControls.opinion}
+                            </span>
+                          </div>
+                        )}
                         {data.annualReport.auditInformation.internalFinancialControls.scope && (
                           <div className="bg-slate-800/40 rounded-lg p-3">
                             <p className="text-xs text-slate-400 mb-1">Scope:</p>
@@ -2788,7 +2816,7 @@ export default function StockCard({ data }: { data: StockData }) {
               <span className="text-3xl">📊</span>
               Quarterly Results Analysis - {data.quarterlyReport.quarter}
               {data.quarterlyReport.fromCache && (
-                <span className="text-xs text-teal-400 bg-teal-900/30 px-2 py-1 rounded-full">
+                <span className="text-xs bg-teal-600/30 text-teal-300 px-2 py-1 rounded-full">
                   Cached
                 </span>
               )}
@@ -2985,78 +3013,83 @@ export default function StockCard({ data }: { data: StockData }) {
 
             {/* Management Commentary */}
             {data.quarterlyReport.managementCommentary && (
-              <div className="grid md:grid-cols-2 gap-4">
-                {/* Business Highlights */}
-                {data.quarterlyReport.managementCommentary.businessHighlights && 
-                 data.quarterlyReport.managementCommentary.businessHighlights.length > 0 && (
-                  <div className="bg-green-900/20 rounded-lg p-4 border border-green-500/20">
-                    <h5 className="text-base font-semibold text-green-300 mb-3 flex items-center gap-2">
-                      <span className="text-lg">✅</span> Business Highlights
-                    </h5>
-                    <ul className="space-y-2">
-                      {data.quarterlyReport.managementCommentary.businessHighlights.map((highlight: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
-                          <span className="text-green-400 mt-1">•</span>
-                          <span>{highlight}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+              <div className="bg-gradient-to-br from-orange-900/20 to-amber-900/20 rounded-lg p-5 border border-orange-500/20">
+                <h4 className="text-base font-bold text-orange-300 mb-4 flex items-center gap-2">
+                  <span className="text-xl">💬</span>
+                  Management Commentary
+                </h4>
+                
+                <div className="grid md:grid-cols-2 gap-4">
+                  {/* Business Highlights */}
+                  {data.quarterlyReport.managementCommentary.businessHighlights && 
+                   data.quarterlyReport.managementCommentary.businessHighlights.length > 0 && (
+                    <div>
+                      <h5 className="text-sm font-semibold text-green-400 mb-2">✅ Highlights</h5>
+                      <ul className="space-y-1.5">
+                        {data.quarterlyReport.managementCommentary.businessHighlights.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-                {/* Challenges */}
-                {data.quarterlyReport.managementCommentary.challenges && 
-                 data.quarterlyReport.managementCommentary.challenges.length > 0 && (
-                  <div className="bg-red-900/20 rounded-lg p-4 border border-red-500/20">
-                    <h5 className="text-base font-semibold text-red-300 mb-3 flex items-center gap-2">
-                      <span className="text-lg">⚠️</span> Challenges
-                    </h5>
-                    <ul className="space-y-2">
-                      {data.quarterlyReport.managementCommentary.challenges.map((challenge: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
-                          <span className="text-red-400 mt-1">•</span>
-                          <span>{challenge}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  {/* Challenges */}
+                  {data.quarterlyReport.managementCommentary.challenges && 
+                   data.quarterlyReport.managementCommentary.challenges.length > 0 && (
+                    <div>
+                      <h5 className="text-sm font-semibold text-red-400 mb-2">⚠️ Challenges</h5>
+                      <ul className="space-y-1.5">
+                        {data.quarterlyReport.managementCommentary.challenges.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-                {/* Opportunities */}
-                {data.quarterlyReport.managementCommentary.opportunities && 
-                 data.quarterlyReport.managementCommentary.opportunities.length > 0 && (
-                  <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-500/20">
-                    <h5 className="text-base font-semibold text-blue-300 mb-3 flex items-center gap-2">
-                      <span className="text-lg">🎯</span> Opportunities
-                    </h5>
-                    <ul className="space-y-2">
-                      {data.quarterlyReport.managementCommentary.opportunities.map((opportunity: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
-                          <span className="text-blue-400 mt-1">•</span>
-                          <span>{opportunity}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  {/* Opportunities */}
+                  {data.quarterlyReport.managementCommentary.opportunities && 
+                   data.quarterlyReport.managementCommentary.opportunities.length > 0 && (
+                    <div>
+                      <h5 className="text-sm font-semibold text-blue-400 mb-2">🚀 Opportunities</h5>
+                      <ul className="space-y-1.5">
+                        {data.quarterlyReport.managementCommentary.opportunities.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
 
-                {/* Future Guidance */}
-                {data.quarterlyReport.managementCommentary.futureGuidance && 
-                 data.quarterlyReport.managementCommentary.futureGuidance.length > 0 && (
-                  <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
-                    <h5 className="text-base font-semibold text-purple-300 mb-3 flex items-center gap-2">
-                      <span className="text-lg">🔮</span> Future Guidance
-                    </h5>
-                    <ul className="space-y-2">
-                      {data.quarterlyReport.managementCommentary.futureGuidance.map((guidance: string, idx: number) => (
-                        <li key={idx} className="text-sm text-gray-300 flex items-start gap-2">
-                          <span className="text-purple-400 mt-1">•</span>
-                          <span>{guidance}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                )}
+                  {/* Future Guidance */}
+                   {data.quarterlyReport.managementCommentary.futureGuidance && (
+                    <div>
+                      <h5 className="text-sm font-semibold text-purple-400 mb-2">🎯 Future Guidance</h5>
+                      <div className="space-y-1.5 text-xs text-gray-300">
+                        {/* Handle ARRAY format (from Screener quarterly data) */}
+                        {Array.isArray(data.quarterlyReport.managementCommentary.futureGuidance) ? (
+                          data.quarterlyReport.managementCommentary.futureGuidance.map((item: string, idx: number) => (
+                            <div key={idx}>• {item}</div>
+                          ))
+                        ) : (
+                          /* Handle OBJECT format (from earnings call transcript) */
+                          <>
+                            {data.quarterlyReport.managementCommentary.futureGuidance.revenueTarget && (
+                              <div>• <span className="text-gray-400">Revenue Target:</span> {data.quarterlyReport.managementCommentary.futureGuidance.revenueTarget}</div>
+                            )}
+                            {data.quarterlyReport.managementCommentary.futureGuidance.marginOutlook && (
+                              <div>• <span className="text-gray-400">Margin Outlook:</span> {data.quarterlyReport.managementCommentary.futureGuidance.marginOutlook}</div>
+                            )}
+                            {data.quarterlyReport.managementCommentary.futureGuidance.capexPlan && (
+                              <div>• <span className="text-gray-400">CAPEX Plan:</span> {data.quarterlyReport.managementCommentary.futureGuidance.capexPlan}</div>
+                            )}
+                            {data.quarterlyReport.managementCommentary.futureGuidance.orderInflowTarget && (
+                              <div>• <span className="text-gray-400">Order Inflow Target:</span> {data.quarterlyReport.managementCommentary.futureGuidance.orderInflowTarget}</div>
+                            )}
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
 
@@ -3071,7 +3104,7 @@ export default function StockCard({ data }: { data: StockData }) {
                   {data.quarterlyReport.segmentPerformance.map((segment: any, idx: number) => (
                     <div key={idx} className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
                       <div className="flex items-center justify-between mb-2">
-                        <h5 className="text-sm font-semibold text-white">{segment.segment}</h5>
+                        <h5 className="text-sm font-semibold text-white mb-2">{segment.segment}</h5>
                         {segment.growth && (
                           <span className={`text-xs px-2 py-1 rounded ${
                             parseFloat(segment.growth) >= 0 ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
@@ -3126,7 +3159,7 @@ export default function StockCard({ data }: { data: StockData }) {
                   {data.quarterlyReport.outlook.keyDrivers && data.quarterlyReport.outlook.keyDrivers.length > 0 && (
                     <div className="mb-2">
                       <div className="text-xs text-gray-400 mb-1">Key Drivers:</div>
-                      <ul className="space-y-1">
+                      <ul className="mt-1 space-y-1">
                         {data.quarterlyReport.outlook.keyDrivers.map((driver: string, idx: number) => (
                           <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
                             <span className="text-indigo-400">▸</span>
@@ -3170,13 +3203,10 @@ export default function StockCard({ data }: { data: StockData }) {
                   {data.quarterlyReport.competitivePosition.competitiveAdvantages && 
                    data.quarterlyReport.competitivePosition.competitiveAdvantages.length > 0 && (
                     <div className="mb-3">
-                      <div className="text-xs text-gray-400 mb-1">Competitive Advantages:</div>
+                      <div className="text-xs text-gray-400 mb-1">Competitive Advantages</div>
                       <ul className="space-y-1">
                         {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
-                            <span className="text-green-400">✓</span>
-                            <span>{advantage}</span>
-                          </li>
+                          <li key={idx} className="text-xs text-gray-300">• {advantage}</li>
                         ))}
                       </ul>
                     </div>
@@ -3185,13 +3215,10 @@ export default function StockCard({ data }: { data: StockData }) {
                   {data.quarterlyReport.competitivePosition.industryTrends && 
                    data.quarterlyReport.competitivePosition.industryTrends.length > 0 && (
                     <div>
-                      <div className="text-xs text-gray-400 mb-1">Industry Trends:</div>
+                      <div className="text-xs text-gray-400 mb-1">Industry Trends</div>
                       <ul className="space-y-1">
                         {data.quarterlyReport.competitivePosition.industryTrends.map((trend: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
-                            <span className="text-amber-400">▸</span>
-                            <span>{trend}</span>
-                          </li>
+                          <li key={idx} className="text-xs text-gray-300">• {trend}</li>
                         ))}
                       </ul>
                     </div>
@@ -3206,5 +3233,6 @@ export default function StockCard({ data }: { data: StockData }) {
       
 </div>
       )}
-</div>
-  )}
+    </div>
+  );
+}

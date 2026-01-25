@@ -288,3 +288,150 @@ QuarterlyReportCacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
 // EXPORT AS NAMED EXPORT
 export const QuarterlyReportCache = mongoose.models.QuarterlyReportCache || 
     mongoose.model<IQuarterlyReportCache>('QuarterlyReportCache', QuarterlyReportCacheSchema);
+
+// ============================================
+// EARNINGS CALL TRANSCRIPT CACHE INTERFACE & SCHEMA
+// ============================================
+export interface IEarningsCallCache {
+    symbol: string;
+    quarter: string; // "Q2"
+    fiscalYear: string; // "FY26"
+    callDate: string; // "2025-11-12"
+    data: {
+        companyName: string;
+        symbol: string;
+        quarter: string;
+        fiscalYear: string;
+        callDate: string;
+        sentiment: 'Bullish' | 'Neutral' | 'Bearish';
+        financialHighlights: {
+            revenue?: {
+                value: number | null;
+                yoyGrowth: number | null;
+                guidance: string | null;
+            };
+            ebitda?: {
+                value: number | null;
+                margin: number | null;
+                trend: string;
+            };
+            netProfit?: {
+                value: number | null;
+                yoyGrowth: number | null;
+            };
+            orderBook?: {
+                total: number | null;
+                newOrders: number | null;
+                breakdown: Record<string, number>;
+            };
+            cashFlow?: {
+                operating: number | null;
+                free: number | null;
+                workingCapital: number | null;
+            };
+            debt?: {
+                netDebt: number | null;
+                netDebtToEBITDA: number | null;
+            };
+        };
+        operationalHighlights: {
+            volumeMetrics: Record<string, any>;
+            marketShare: number | null;
+            capacityUtilization: number | null;
+            keyProjects: string[];
+        };
+        managementCommentary: {
+            businessHighlights: string[];
+            challenges: string[];
+            opportunities: string[];
+            futureGuidance: {
+                revenueTarget: string | null;
+                marginOutlook: string | null;
+                capexPlan: string | null;
+                orderInflowTarget: string | null;
+            };
+        };
+        qAndAInsights: {
+            keyQuestions: string[];
+            keyAnswers: string[];
+            redFlags: string[];
+        };
+        segmentPerformance: Array<{
+            segment: string;
+            revenue: number | null;
+            revenueContribution: number | null;
+            growth: number | null;
+            margin: number | null;
+            strategicImportance: string;
+            outlook: string;
+        }>;
+        competitivePosition: {
+            marketShareTrend: string;
+            competitiveAdvantages: string[];
+            industryTrends: string[];
+        };
+        investmentThesis: {
+            bullCase: string[];
+            bearCase: string[];
+            recommendation: {
+                signal: 'BUY' | 'SELL' | 'HOLD' | 'STRONG_BUY' | 'STRONG_SELL';
+                confidence: 'High' | 'Medium' | 'Low';
+                timeframe: string;
+                triggers: string[];
+            };
+        };
+        keyTakeaways: string[];
+        summary: string;
+    };
+    rawTranscript: string;
+    transcriptLength: number;
+    wasChunked: boolean;
+    source: string;
+    fetchedAt: Date;
+    expiresAt: Date;
+}
+
+const EarningsCallCacheSchema = new mongoose.Schema<IEarningsCallCache>({
+    symbol: { type: String, required: true, index: true },
+    quarter: { type: String, required: true },
+    fiscalYear: { type: String, required: true, index: true },
+    callDate: { type: String, required: true },
+    data: {
+        type: mongoose.Schema.Types.Mixed,
+        required: true
+    },
+    rawTranscript: { type: String, required: true },
+    transcriptLength: { type: Number, required: true },
+    wasChunked: { type: Boolean, default: false },
+    source: { 
+        type: String, 
+        required: true,
+        default: 'Screener.in Concalls'
+    },
+    fetchedAt: { type: Date, default: Date.now },
+    expiresAt: { type: Date, required: true, index: true }
+}, {
+    timestamps: true
+});
+
+// Compound index for unique constraint
+EarningsCallCacheSchema.index(
+    { symbol: 1, quarter: 1, fiscalYear: 1 }, 
+    { unique: true }
+);
+
+// Additional indexes
+EarningsCallCacheSchema.index({ symbol: 1, callDate: -1 });
+EarningsCallCacheSchema.index({ callDate: -1 });
+EarningsCallCacheSchema.index({ 'data.sentiment': 1 });
+EarningsCallCacheSchema.index({ 'data.investmentThesis.recommendation.signal': 1 });
+
+// TTL index - auto-delete after 90 days
+EarningsCallCacheSchema.index({ expiresAt: 1 }, { expireAfterSeconds: 0 });
+
+// Text index for searching
+EarningsCallCacheSchema.index({ rawTranscript: 'text', 'data.summary': 'text' });
+
+// EXPORT AS NAMED EXPORT
+export const EarningsCallCache = mongoose.models.EarningsCallCache || 
+    mongoose.model<IEarningsCallCache>('EarningsCallCache', EarningsCallCacheSchema);
