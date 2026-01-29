@@ -6,6 +6,7 @@ import OpenAI from "openai";
 import Groq from "groq-sdk";
 import { CacheManager } from '@/app/utils/cache';
 import { gemini,  callGeminiAPI } from '@/app/utils/aiProviders';
+import { compareFiscalYears } from '@/app/utils/fiscalYearMapper';
 import { 
     parseKeyValueText, 
     parseValue, 
@@ -887,13 +888,23 @@ async function mcpGetIndianComprehensiveData(
     
     try {
         // ============================================
-        // PHASE 1: CHECK MONGODB CACHE FOR ANNUAL REPORT
+        // PHASE 1: CHECK AVAILABLE VERSIONS FROM SCREENER.IN
         // ============================================
+        console.log(`🔍 [Smart Cache] Checking for newer data on Screener.in...`);
+        
+        const { checkAvailableDataVersions } = await import('../../utils/screenerScraper');
+        const availableVersions = await checkAvailableDataVersions(symbol);
+        
+        // ============================================
+        // PHASE 2: CHECK MONGODB CACHE & COMPARE VERSIONS
+        // ============================================
+        await connectToDatabase();
+        
         let annualReportInsights = null;
         let annualFromCache = false;
+        let needsFreshAnnual = forceRefresh;
         
         if (!forceRefresh) {
-            await connectToDatabase();
             try { 
                 const cachedReport = await AnnualReportCache.findOne({
                     symbol: cleanSymbol,
@@ -902,12 +913,20 @@ async function mcpGetIndianComprehensiveData(
                 }).sort({ fiscalYear: -1 }).limit(1);
                 
                 if (cachedReport) {
-                    const ageInDays = Math.floor((Date.now() - cachedReport.fetchedAt.getTime()) / (1000 * 60 * 60 * 24));
-                    console.log(`✅ [MongoDB Annual] Cache HIT for ${cleanSymbol} FY${cachedReport.fiscalYear} (${ageInDays}d old)`);
-                    annualReportInsights = cachedReport.data;
-                    annualFromCache = true;
+                    const cachedFY = cachedReport.fiscalYear;
+                    const latestFY = availableVersions.latestFiscalYear;
+                    
+                    if (latestFY && compareFiscalYears(latestFY, cachedFY) > 0) {
+                        console.log(`🆕 [Annual Report] Newer FY available: ${latestFY} (cached: ${cachedFY})`);
+                        needsFreshAnnual = true;
+                    } else {
+                        console.log(`✅ [Annual Report] Cache is up-to-date: ${cachedFY}`);
+                        annualReportInsights = cachedReport.data;
+                        annualFromCache = true;
+                    }
                 } else {
-                    console.log(`❌ [MongoDB Annual] Cache MISS for ${cleanSymbol}`);
+                    console.log(`📭 [Annual Report] No cache found`);
+                    needsFreshAnnual = true;
                 }
             } catch (dbError: any) {
                 console.warn(`⚠️ [MongoDB Annual] Cache check failed: ${dbError.message}`);
@@ -915,15 +934,15 @@ async function mcpGetIndianComprehensiveData(
         }
         
         // ============================================
-        // PHASE 2: CHECK MONGODB CACHE FOR QUARTERLY REPORT
+        // PHASE 3: CHECK MONGODB CACHE FOR QUARTERLY REPORT
         // ============================================
         let quarterlyInsights = null;
         let quarterlyFromCache = false;
         let quarter = 'Unknown';
         let rawTranscript = '';
+        let needsFreshQuarterly = forceRefreshQuarterly;
         
         if (!forceRefreshQuarterly) {
-            await connectToDatabase();
             try {
                 const cachedQuarterly = await QuarterlyReportCache.findOne({
                     symbol: cleanSymbol,
@@ -931,48 +950,68 @@ async function mcpGetIndianComprehensiveData(
                 }).sort({ fiscalYear: -1, quarter: -1 }).limit(1);
                 
                 if (cachedQuarterly) {
-                    const ageInDays = Math.floor((Date.now() - cachedQuarterly.fetchedAt.getTime()) / (1000 * 60 * 60 * 24));
-                    console.log(`✅ [MongoDB Quarterly] Cache HIT for ${cleanSymbol} ${cachedQuarterly.quarter} (${ageInDays}d old)`);
-                    quarterlyInsights = cachedQuarterly.data;
-                    quarter = cachedQuarterly.quarter;
-                    rawTranscript = cachedQuarterly.rawTranscript || '';
-                    quarterlyFromCache = true;
+                    const cachedQ = cachedQuarterly.quarter;
+                    const latestQ = availableVersions.latestQuarter;
+                    
+                    if (latestQ && latestQ !== cachedQ) {
+                        console.log(`🆕 [Quarterly] Newer quarter available: ${latestQ} (cached: ${cachedQ})`);
+                        needsFreshQuarterly = true;
+                    } else {
+                        console.log(`✅ [Quarterly] Cache is up-to-date: ${cachedQ}`);
+                        quarterlyInsights = cachedQuarterly.data;
+                        quarter = cachedQuarterly.quarter;
+                        rawTranscript = cachedQuarterly.rawTranscript || '';
+                        quarterlyFromCache = true;
+                    }
                 } else {
-                    console.log(`❌ [MongoDB Quarterly] Cache MISS for ${cleanSymbol}`);
+                    console.log(`📭 [Quarterly] No cache found`);
+                    needsFreshQuarterly = true;
                 }
             } catch (dbError: any) {
                 console.warn(`⚠️ [MongoDB Quarterly] Cache check failed: ${dbError.message}`);
             }
         }
 
+        // ============================================
+        // PHASE 4: CHECK MONGODB CACHE FOR EARNINGS CALL
+        // ============================================
         let earningsCallInsights = null;
         let earningsCallFromCache = false;
+        let needsFreshEarningsCall = forceRefreshEarningsCall;
 
         if (!forceRefreshEarningsCall) {
-        await connectToDatabase();
-        try {
-            const cachedEarningsCall = await EarningsCallCache.findOne({
-                symbol: cleanSymbol,
-                expiresAt: { $gt: new Date() }
-            }).sort({ callDate: -1 }).limit(1);
-            
-            if (cachedEarningsCall) {
-                earningsCallInsights = cachedEarningsCall.data;
-                earningsCallFromCache = true;
-                console.log(`💾 [MongoDB Earnings Call] Using cached data (${cachedEarningsCall.quarter} FY${cachedEarningsCall.fiscalYear})`);
-            } else {
-                console.log(`🔄 [MongoDB Earnings Call] No cached data found`);
+            try {
+                const cachedEarningsCall = await EarningsCallCache.findOne({
+                    symbol: cleanSymbol,
+                    expiresAt: { $gt: new Date() }
+                }).sort({ callDate: -1 }).limit(1);
+                
+                if (cachedEarningsCall) {
+                    const cachedConcallQ = `${cachedEarningsCall.quarter} FY${cachedEarningsCall.fiscalYear}`;
+                    const latestConcallQ = availableVersions.latestConcallQuarter;
+                    
+                    if (latestConcallQ && latestConcallQ !== cachedConcallQ) {
+                        console.log(`🆕 [Earnings Call] Newer transcript available: ${latestConcallQ} (cached: ${cachedConcallQ})`);
+                        needsFreshEarningsCall = true;
+                    } else {
+                        console.log(`✅ [Earnings Call] Cache is up-to-date: ${cachedConcallQ}`);
+                        earningsCallInsights = cachedEarningsCall.data;
+                        earningsCallFromCache = true;
+                    }
+                } else {
+                    console.log(`📭 [Earnings Call] No cache found`);
+                    needsFreshEarningsCall = true;
+                }
+            } catch (dbError: any) {
+                console.warn(`⚠️ [MongoDB Earnings Call] Cache check failed: ${dbError.message}`);
             }
-        } catch (dbError: any) {
-            console.warn(`⚠️ [MongoDB Earnings Call] Cache check failed: ${dbError.message}`);
         }
-    }
         
         // ============================================
-        // PHASE 3: IF BOTH CACHED, RETURN EARLY
+        // PHASE 5: RETURN CACHE IF ALL UP-TO-DATE
         // ============================================
-        if (annualFromCache && quarterlyFromCache && earningsCallFromCache) {
-            console.log(`💾 [MongoDB] Both annual + quarterly cached for ${cleanSymbol}`);
+        if (!needsFreshAnnual && !needsFreshQuarterly && !needsFreshEarningsCall) {
+            console.log(`💾 [Smart Cache] All data is up-to-date for ${cleanSymbol}`);
             return {
                 transcript: rawTranscript,
                 annualReport: '',
@@ -981,13 +1020,15 @@ async function mcpGetIndianComprehensiveData(
                 earningsCallInsights: earningsCallInsights,
                 fromCache: true,
                 quarter: quarter,
-                source: 'MongoDB Cache',
+                source: 'MongoDB Cache (Verified Fresh)',
                 cacheType: 'mongodb'
             };
         }
         
         // ============================================
-        // PHASE 4: VERIFY CREDENTIALS & FETCH FRESH DATA
+        // PHASE 6: FETCH FRESH DATA IF NEEDED
+        // ============================================
+        // PHASE 6: VERIFY CREDENTIALS & FETCH FRESH DATA
         // ============================================
         if (!process.env.SCREENER_EMAIL || !process.env.SCREENER_PASSWORD) {
             throw new Error('Screener.in credentials required');

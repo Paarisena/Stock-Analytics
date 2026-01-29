@@ -839,6 +839,90 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
 /**
  * Fetch comprehensive company data (quarterly + annual + concall)
  */
+/**
+ * Check if newer data is available on Screener.in
+ * Quick metadata fetch - doesn't download full reports
+ * Returns latest available quarters and fiscal years
+ */
+export async function checkAvailableDataVersions(symbol: string): Promise<{
+    latestQuarter: string | null;
+    latestFiscalYear: string | null;
+    latestConcallQuarter: string | null;
+}> {
+    try {
+        const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
+        console.log(`🔍 [Version Check] Checking latest available data for ${cleanSymbol}...`);
+
+        const cookies = await getAuthenticatedSession();
+        if (!cookies) return { latestQuarter: null, latestFiscalYear: null, latestConcallQuarter: null };
+
+        await waitForRateLimit();
+
+        // Quick fetch - just parse HTML to find latest versions
+        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/consolidated/`;
+        const response = await fetch(companyUrl, {
+            headers: {
+                'Cookie': cookies,
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+            },
+        });
+
+        if (!response.ok) {
+            console.log(`⚠️ [Version Check] Failed to fetch page`);
+            return { latestQuarter: null, latestFiscalYear: null, latestConcallQuarter: null };
+        }
+
+        const html = await response.text();
+        const $ = load(html);
+
+        // 1. Extract latest quarter from table header
+        const quarterHeaders = $('section:contains("Quarterly Results") table thead th')
+            .map((i, el) => $(el).text().trim())
+            .get();
+        const latestQuarter = quarterHeaders[1] || null; // First data column
+
+        // 2. Extract latest fiscal year from annual reports section
+        let latestFiscalYear: string | null = null;
+        $('a[href*="annual"]').each((i, elem) => {
+            const linkText = $(elem).text();
+            const fyMatch = linkText.match(/FY\s*'?(\d{2,4})|Financial Year (\d{4})/i);
+            if (fyMatch) {
+                const year = fyMatch[1] || fyMatch[2];
+                const normalizedFY = year.length === 2 ? `FY20${year}` : `FY${year}`;
+                if (!latestFiscalYear || compareFiscalYears(normalizedFY, latestFiscalYear) > 0) {
+                    latestFiscalYear = normalizedFY;
+                }
+            }
+        });
+
+        // 3. Extract latest concall quarter
+        let latestConcallQuarter: string | null = null;
+        $('a').each((i, elem) => {
+            const linkText = $(elem).text().trim();
+            if (linkText.toLowerCase() === 'transcript') {
+                const parentText = $(elem).parent().text();
+                const fyMatch = parentText.match(/\bQ([1-4])\s+FY\s*'?(\d{2,4})\b/i);
+                if (fyMatch) {
+                    latestConcallQuarter = `Q${fyMatch[1]} FY${fyMatch[2].length === 2 ? '20' + fyMatch[2] : fyMatch[2]}`;
+                }
+                return false; // Stop after first
+            }
+        });
+
+        console.log(`✅ [Version Check] Latest available:`, {
+            latestQuarter,
+            latestFiscalYear,
+            latestConcallQuarter
+        });
+
+        return { latestQuarter, latestFiscalYear, latestConcallQuarter };
+
+    } catch (error: any) {
+        console.error(`❌ [Version Check] Error:`, error.message);
+        return { latestQuarter: null, latestFiscalYear: null, latestConcallQuarter: null };
+    }
+}
+
 export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
     transcript: ScreenerTranscript | null;
     annualReport: ScreenerAnnualReport | null;
