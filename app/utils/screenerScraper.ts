@@ -929,6 +929,7 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
 }
 
 export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
+    [x: string]: any;
     transcript: ScreenerTranscript | null;
     annualReport: ScreenerAnnualReport | null;
     concallTranscript?: {
