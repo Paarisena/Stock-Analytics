@@ -1,5 +1,6 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
+import { motion } from 'framer-motion';
 import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Radio, Volume2, Clock, AlertTriangle,RefreshCw } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import ComprehensiveReportCard from './ComprehensiveReportCard';
@@ -31,6 +32,50 @@ const renderValue = (value: any, fallback?: any): string | number => {
   }
   
   return 'N/A';
+};
+
+// Animation variants for Framer Motion
+const cardVariants = {
+  hidden: { opacity: 0, y: 20 },
+  visible: { 
+    opacity: 1, 
+    y: 0,
+    transition: { 
+      duration: 0.5,
+      ease: [0.4, 0, 0.2, 1] as any
+    }
+  }
+};
+
+const staggerContainer = {
+  hidden: { opacity: 0 },
+  visible: {
+    opacity: 1,
+    transition: {
+      staggerChildren: 0.1,
+      delayChildren: 0.2
+    }
+  }
+};
+
+const scaleIn = {
+  hidden: { scale: 0.95, opacity: 0 },
+  visible: { 
+    scale: 1, 
+    opacity: 1,
+    transition: { 
+      duration: 0.4,
+      ease: [0.4, 0, 0.2, 1] as any
+    }
+  }
+};
+
+const priceFlash = {
+  initial: { scale: 1 },
+  flash: { 
+    scale: [1, 1.05, 1],
+    transition: { duration: 0.3 }
+  }
 };
 
 interface ChartDataPoint {
@@ -295,6 +340,9 @@ export default function StockCard({ data }: { data: StockData }) {
     setDayHigh(data.current.price);
     setDayLow(data.current.price);
   }, [data.current.price]);
+  
+
+  
   const isPositive = data.current.change >= 0;
   const isShortTermPredictionPositive = data.shortTermPrediction.change >= 0;
   const isLongTermPredictionPositive = data.longTermPrediction.change >= 0;
@@ -476,84 +524,140 @@ export default function StockCard({ data }: { data: StockData }) {
 
 
   return (
-    <div className="my-6 p-6 bg-gradient-to-br from-green-900/20 via-emerald-800/10 to-teal-900/20 backdrop-blur-xl rounded-2xl border border-green-500/20 shadow-2xl">
+    <div className="my-4 sm:my-6 lg:my-8 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-slate-700/50 shadow-2xl hover:border-cyan-500/30 transition-all duration-500 relative overflow-hidden">
+      {/* Animated background gradient */}
+      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
+        <div className="absolute -top-20 -right-20 w-60 h-60 bg-cyan-500/20 rounded-full blur-3xl animate-pulse"></div>
+        <div className="absolute bottom-0 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-700"></div>
+      </div>
       
       {/* Live Ticker Tape */}
-      <div className="mb-4 bg-gradient-to-r from-cyan-900/40 via-blue-900/40 to-cyan-900/40 border border-cyan-500/30 rounded-xl overflow-hidden">
-        <div className="flex items-center gap-4 px-4 py-2">
+      <motion.div 
+        className="relative mb-4 sm:mb-6 bg-gradient-to-r from-cyan-900/30 via-blue-900/30 to-cyan-900/30 border border-cyan-500/30 rounded-xl sm:rounded-2xl overflow-hidden backdrop-blur-sm"
+        initial={{ x: -100, opacity: 0 }}
+        animate={{ x: 0, opacity: 1 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+      >
+        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 px-3 sm:px-4 py-2 sm:py-3">
           <div className="flex items-center gap-2">
-            <Radio className={`w-4 h-4 ${isLive ? 'text-red-500 animate-pulse' : 'text-gray-500'}`} />
-            <span className="text-xs font-bold text-cyan-300">LIVE</span>
+            <Radio className={`w-4 h-4 ${isLive ? 'text-red-400 animate-pulse' : 'text-gray-500'}`} />
+            <span className="text-xs font-bold text-cyan-300 tracking-wider">LIVE</span>
           </div>
-          <div className="flex-1 flex items-center gap-6 overflow-hidden">
-            <div className="text-xs text-gray-300 whitespace-nowrap">
-              <span className="font-semibold text-cyan-400">Volume:</span> {volume.toLocaleString()} • 
-              <span className="font-semibold text-cyan-400 ml-3">Day High:</span> {currencySymbol}{dayHigh.toFixed(2)} • 
-              <span className="font-semibold text-cyan-400 ml-3">Day Low:</span> {currencySymbol}{dayLow.toFixed(2)} • 
-              <span className="font-semibold text-cyan-400 ml-3">Market:</span> {data.current.marketState === 'REGULAR' ? '🟢 OPEN' : '🔴 CLOSED'}
+          <div className="flex-1 w-full sm:w-auto">
+            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 text-xs text-gray-300">
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-cyan-400">Volume:</span> 
+                <span className="text-white">{volume.toLocaleString()}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-cyan-400">High:</span> 
+                <span className="text-green-400">{currencySymbol}{dayHigh.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-cyan-400">Low:</span> 
+                <span className="text-red-400">{currencySymbol}{dayLow.toFixed(2)}</span>
+              </div>
+              <div className="flex items-center gap-1">
+                <span className="font-semibold text-cyan-400">Market:</span> 
+                <span className={data.current.marketState === 'REGULAR' ? 'text-green-400' : 'text-red-400'}>
+                  {data.current.marketState === 'REGULAR' ? '● OPEN' : '● CLOSED'}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs text-gray-400">
+          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
             <Clock className="w-3 h-3" />
             <span>{lastUpdate.toLocaleTimeString()}</span>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Header with Live Price */}
-      <div className="flex items-start justify-between mb-4">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <h3 className="text-2xl font-bold text-gray-100">{data.symbol}</h3>
-            <div className={`flex items-center gap-1 px-2 py-1 rounded-lg ${isPriceIncreasing ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
-              {isPriceIncreasing ? <TrendingUp size={16} /> : <TrendingDown size={16} />}
-              <span className="text-xs font-semibold">{isPriceIncreasing ? '+' : ''}{((priceChange / previousPriceRef.current) * 100).toFixed(2)}%</span>
+      <motion.div 
+        className="relative flex flex-col sm:flex-row items-start sm:items-center justify-between mb-4 sm:mb-6 gap-3"
+        variants={scaleIn}
+        initial="hidden"
+        animate="visible"
+      >
+        <div className="flex-1">
+          <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
+            <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-teal-400 bg-clip-text text-transparent">{data.symbol}</h3>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-sm ${isPriceIncreasing ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+              {isPriceIncreasing ? <TrendingUp size={18} className="animate-pulse" /> : <TrendingDown size={18} className="animate-pulse" />}
+              <span className="text-xs sm:text-sm font-semibold">{isPriceIncreasing ? '+' : ''}{((priceChange / previousPriceRef.current) * 100).toFixed(2)}%</span>
             </div>
           </div>
-          <p className="text-gray-400 text-sm">{data.metadata.exchange}</p>
+          <p className="text-gray-400 text-sm sm:text-base">{data.metadata.exchange}</p>
         </div>
-        <div className="p-3 bg-green-600/20 rounded-xl">
-          {getCurrencyIcon(currency)}
+        <div className="flex items-center gap-3">
+          <div className="p-3 sm:p-4 bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-2xl backdrop-blur-sm border border-cyan-500/30 hover:scale-110 transition-transform duration-300">
+            {getCurrencyIcon(currency)}
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Live Current Price */}
-      <div className="mb-4 relative">
-        <div className={`absolute inset-0 ${isPriceIncreasing ? 'bg-green-500/5' : 'bg-red-500/5'} rounded-xl transition-all duration-300`}></div>
-        <div className="relative p-4">
-          <div className="text-6xl font-bold text-white mb-1 transition-all duration-300">
+      <motion.div 
+        className="mb-4 sm:mb-6 relative"
+        initial={{ scale: 0.9, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.2 }}
+      >
+        <div className={`absolute inset-0 ${isPriceIncreasing ? 'bg-green-500/10' : 'bg-red-500/10'} rounded-2xl backdrop-blur-sm transition-all duration-300`}></div>
+        <div className="relative p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/50 to-slate-800/50 rounded-2xl border ${isPriceIncreasing ? 'border-green-500/20' : 'border-red-500/20'} hover:border-cyan-500/40 transition-all duration-300">
+          <motion.div 
+            className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold text-white mb-2 transition-all duration-300 tracking-tight"
+            animate={isPriceIncreasing !== undefined ? "flash" : "initial"}
+            variants={priceFlash}
+            key={livePrice}
+          >
             {currencySymbol}{livePrice.toFixed(2)}
-          </div>
-          <div className={`text-lg font-semibold ${isPriceIncreasing ? 'text-green-400' : 'text-red-400'}`}>
+          </motion.div>
+          <div className={`text-base sm:text-lg lg:text-xl font-semibold mb-3 ${isPriceIncreasing ? 'text-green-400' : 'text-red-400'}`}>
             {isPriceIncreasing ? '+' : ''}{currencySymbol}{Math.abs(priceChange).toFixed(4)} {currency}
           </div>
-          <div className="flex items-center gap-3 mt-2">
-            <div className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg text-xs ${data.current.marketState === 'REGULAR' ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'}`}>
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
+            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm backdrop-blur-sm border ${data.current.marketState === 'REGULAR' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
               <div className={`w-2 h-2 rounded-full ${data.current.marketState === 'REGULAR' ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
               {data.current.marketState === 'REGULAR' ? 'Market Open' : 'Market Closed'}
+            </div>
+            <div className="flex sm:hidden items-center gap-1 text-xs text-gray-400 px-2 py-1 bg-slate-800/50 rounded-lg">
+              <Clock className="w-3 h-3" />
+              <span>{lastUpdate.toLocaleTimeString()}</span>
             </div>
             <div className="flex items-center gap-1 text-xs text-gray-400">
               <Clock className="w-3 h-3" />
               <span>Updated {lastUpdate.toLocaleTimeString()}</span>
             </div>
-            <button
+            <motion.button
               onClick={() => setIsLive(!isLive)}
               className={`px-2 py-1 rounded text-xs font-semibold transition-all ${
                 isLive 
                   ? 'bg-red-500/20 text-red-400 border border-red-500/40' 
                   : 'bg-green-500/20 text-green-400 border border-green-500/40'
               }`}
+              whileHover={{ scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
             >
               {isLive ? '⏸' : '▶'}
-            </button>
+            </motion.button>
           </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* Live Metrics Grid */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <motion.div 
+        className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"
+        variants={staggerContainer}
+        initial="hidden"
+        animate="visible"
+      >
         {/* Volume */}
-        <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50">
+        <motion.div 
+          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
+          variants={scaleIn}
+          whileHover={{ scale: 1.05, borderColor: 'rgba(168, 85, 247, 0.5)' }}
+        >
           <div className="flex items-center gap-1 mb-1">
             <Volume2 className="w-3 h-3 text-purple-400" />
             <span className="text-xs text-gray-400">Volume</span>
@@ -561,10 +665,14 @@ export default function StockCard({ data }: { data: StockData }) {
           <div className="text-xl font-bold text-white">
             {(volume / 1000).toFixed(1)}K
           </div>
-        </div>
+        </motion.div>
 
         {/* Day High */}
-        <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50">
+        <motion.div 
+          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
+          variants={scaleIn}
+          whileHover={{ scale: 1.05, borderColor: 'rgba(74, 222, 128, 0.5)' }}
+        >
           <div className="flex items-center gap-1 mb-1">
             <TrendingUp className="w-3 h-3 text-green-400" />
             <span className="text-xs text-gray-400">Day High</span>
@@ -572,10 +680,14 @@ export default function StockCard({ data }: { data: StockData }) {
           <div className="text-xl font-bold text-green-400">
             {currencySymbol}{dayHigh.toFixed(2)}
           </div>
-        </div>
+        </motion.div>
 
         {/* Day Low */}
-        <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50">
+        <motion.div 
+          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
+          variants={scaleIn}
+          whileHover={{ scale: 1.05, borderColor: 'rgba(248, 113, 113, 0.5)' }}
+        >
           <div className="flex items-center gap-1 mb-1">
             <TrendingDown className="w-3 h-3 text-red-400" />
             <span className="text-xs text-gray-400">Day Low</span>
@@ -583,18 +695,22 @@ export default function StockCard({ data }: { data: StockData }) {
           <div className="text-xl font-bold text-red-400">
             {currencySymbol}{dayLow.toFixed(2)}
           </div>
-        </div>
+        </motion.div>
 
         {/* Previous Close */}
-        <div className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50">
+        <motion.div 
+          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
+          variants={scaleIn}
+          whileHover={{ scale: 1.05, borderColor: 'rgba(209, 213, 219, 0.5)' }}
+        >
           <div className="flex items-center gap-1 mb-1">
             <span className="text-xs text-gray-400">Prev Close</span>
           </div>
           <div className="text-xl font-bold text-gray-300">
             {currencySymbol}{data.metadata.previousClose.toFixed(2)}
           </div>
-        </div>
-      </div>
+        </motion.div>
+      </motion.div>
 
       {/* Price Range Bar */}
       <div className="mb-6 bg-gray-800/40 rounded-xl p-4">
@@ -619,22 +735,22 @@ export default function StockCard({ data }: { data: StockData }) {
       </div>
 
       {/* Price Chart with Prediction */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
+      <div className="relative mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
           <div className="flex items-center gap-2">
-            <Activity size={18} className="text-blue-400" />
-            <h4 className="text-sm font-semibold text-gray-300">Price Movement & Forecast</h4>
-            <div className="flex items-center gap-1 ml-2">
-              <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
-              <span className="text-xs text-green-400">Live</span>
+            <Activity size={18} className="text-cyan-400" />
+            <h4 className="text-sm sm:text-base font-semibold text-white">Price Movement & Forecast</h4>
+            <div className="flex items-center gap-1 ml-2 px-2 py-0.5 bg-green-500/20 rounded-full">
+              <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
+              <span className="text-xs text-green-400 font-medium">Live</span>
             </div>
           </div>
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
               <div className="w-3 h-0.5 bg-blue-500"></div>
-              <span className="text-gray-400">Historical</span>
+              <span className="text-gray-300">Historical</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
               <div className="w-3 h-0.5 bg-purple-500 opacity-60"></div>
               <span className="text-gray-400">Predicted</span>
             </div>
@@ -690,27 +806,27 @@ export default function StockCard({ data }: { data: StockData }) {
                   color: '#f3f4f6',
                   padding: '8px 12px'
                 }}
-                formatter={(value: any, name: string, props: any) => {
+                formatter={(value: any, name: string | undefined, props: any) => {
                   const type = props.payload.type === 'prediction' ? '(Forecast)' : '';
-                  return [`${currencySymbol}${formatPrice(value, currency)} ${type}`, 'Price'];
-                }}
-                labelFormatter={(label) => `Time: ${label}`}
-              />
-              
-              <ReferenceLine 
-                y={livePrice} 
-                stroke="#f59e0b" 
-                strokeDasharray="5 5"
-                strokeWidth={2}
-                label={{ 
-                  value: `Live: ${currencySymbol}${livePrice.toFixed(2)}`, 
-                  fill: '#f59e0b', 
-                  fontSize: 11,
-                  fontWeight: 'bold',
-                  position: 'insideTopRight'
-                }}
-              />
-              
+                    return [`${currencySymbol}${formatPrice(value, currency)} ${type}`, 'Price'];
+                  }}
+                  labelFormatter={(label: any) => label ? `Time: ${label}` : 'Time: N/A'}
+                  />
+                  
+                  <ReferenceLine 
+                  y={livePrice} 
+                  stroke="#f59e0b" 
+                  strokeDasharray="5 5"
+                  strokeWidth={2}
+                  label={{ 
+                    value: `Live: ${currencySymbol}${livePrice.toFixed(2)}`, 
+                    fill: '#f59e0b', 
+                    fontSize: 11,
+                    fontWeight: 'bold',
+                    position: 'insideTopRight'
+                  }}
+                  />
+                  
               {/* Historical Line */}
               <Area 
                 type="monotone" 
@@ -778,32 +894,39 @@ export default function StockCard({ data }: { data: StockData }) {
 
       {/* Trading Signal & Support/Resistance */}
       {currentPrediction.tradingSignal && currentPrediction.supportResistance && (
-        <div className="mb-6 p-5 bg-gradient-to-br from-gray-900/40 via-gray-800/30 to-gray-900/40 border border-gray-600/40 rounded-2xl shadow-lg">
+        <div className="relative mb-6 sm:mb-8 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl sm:rounded-3xl shadow-xl backdrop-blur-sm hover:border-cyan-500/40 transition-all duration-300">
           {/* Trading Signal */}
-          <div className="mb-5">
-            <h4 className="text-sm font-bold text-gray-300 mb-3 flex items-center gap-2">
-              <span className="text-lg">🎯</span> Trading Signal
+          <div className="mb-6 sm:mb-8">
+            <h4 className="text-sm sm:text-base font-bold text-white mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="flex items-center gap-2">
+                <span className="text-xl sm:text-2xl">🎯</span> Trading Signal
+              </span>
               {predictionAge > 0 && (
-                <span className="text-xs text-gray-500 ml-auto">
+                <span className="text-xs text-gray-500 sm:ml-auto">
                   Updated {Math.floor(predictionAge / 60)}m {predictionAge % 60}s ago
                 </span>
               )}
             </h4>
-            <div className={`p-4 rounded-xl border-2 ${
-              currentPrediction.tradingSignal.signal === 'STRONG_BUY' ? 'bg-green-900/30 border-green-500' :
-              currentPrediction.tradingSignal.signal === 'BUY' ? 'bg-green-900/20 border-green-600' :
-              currentPrediction.tradingSignal.signal === 'STRONG_SELL' ? 'bg-red-900/30 border-red-500' :
-              currentPrediction.tradingSignal.signal === 'SELL' ? 'bg-red-900/20 border-red-600' :
-              'bg-yellow-900/20 border-yellow-600'
-            }`}>
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-2xl font-bold text-white">{currentPrediction.tradingSignal.signal.replace('_', ' ')}</span>
-                <span className="text-sm text-gray-300">Strength: {currentPrediction.tradingSignal.strength}</span>
+            <div className={`p-4 sm:p-6 rounded-xl sm:rounded-2xl border-2 backdrop-blur-sm transition-all duration-300 hover:scale-[1.02] ${
+              currentPrediction.tradingSignal.signal === 'STRONG_BUY' ? 'bg-green-900/30 border-green-500 shadow-green-500/20' :
+              currentPrediction.tradingSignal.signal === 'BUY' ? 'bg-green-900/20 border-green-600 shadow-green-600/10' :
+              currentPrediction.tradingSignal.signal === 'STRONG_SELL' ? 'bg-red-900/30 border-red-500 shadow-red-500/20' :
+              currentPrediction.tradingSignal.signal === 'SELL' ? 'bg-red-900/20 border-red-600 shadow-red-600/10' :
+              'bg-yellow-900/20 border-yellow-600 shadow-yellow-600/10'
+            } shadow-lg`}>
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                <span className="text-xl sm:text-2xl lg:text-3xl font-bold text-white">{currentPrediction.tradingSignal.signal.replace('_', ' ')}</span>
+                <span className="text-sm text-gray-300 px-3 py-1 bg-slate-800/50 rounded-lg inline-flex items-center gap-2">
+                  <span className="font-semibold">Strength:</span> {currentPrediction.tradingSignal.strength}
+                </span>
               </div>
-              <p className="text-sm text-gray-300 mb-2">{currentPrediction.tradingSignal.description}</p>
-              <div className="text-xs text-gray-400 space-y-1">
+              <p className="text-sm sm:text-base text-gray-300 mb-3">{currentPrediction.tradingSignal.description}</p>
+              <div className="text-xs sm:text-sm text-gray-400 space-y-2">
                 {currentPrediction.tradingSignal.reasons.map((reason, idx) => (
-                  <div key={idx}>• {reason}</div>
+                  <div key={idx} className="flex items-start gap-2">
+                    <span className="text-cyan-400 mt-0.5">•</span>
+                    <span>{reason}</span>
+                  </div>
                 ))}
               </div>
             </div>
@@ -937,7 +1060,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 <span className="text-gray-500">Calculated from last 50 periods</span>
               </div>
             </div>
-          
+          </div>
+        </div>
+      )}
 
       {/* Live Bulletin Feed */}
       {bulletinMessages.length > 0 && (
@@ -959,34 +1084,52 @@ export default function StockCard({ data }: { data: StockData }) {
           )}
 
       {/* Short Term Prediction */}
-      <div className="mb-6 p-5 bg-gradient-to-br from-purple-900/30 via-purple-800/20 to-blue-900/20 border border-purple-500/40 rounded-2xl shadow-lg shadow-purple-500/10">
-        <h4 className="text-sm font-bold text-purple-300 mb-3 flex items-center gap-2">
-          <span className="text-lg">🔮</span> Short Term ({data.shortTermPrediction.timeframe}) Forecast
+      <motion.div 
+        className="relative mb-4 sm:mb-6 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-purple-900/30 via-purple-800/20 to-blue-900/20 border border-purple-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-purple-500/10 backdrop-blur-sm hover:border-purple-500/60 transition-all duration-300"
+        initial={{ opacity: 0, x: -50 }}
+        animate={{ opacity: 1, x: 0 }}
+        transition={{ duration: 0.5, delay: 0.3 }}
+        whileHover={{ scale: 1.02, boxShadow: '0 20px 50px rgba(168, 85, 247, 0.3)' }}
+      >
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
+        <h4 className="relative text-sm sm:text-base font-bold bg-gradient-to-r from-purple-400 to-blue-400 bg-clip-text text-transparent mb-3 sm:mb-4 flex items-center gap-2">
+          <span className="text-xl sm:text-2xl">🔮</span> Short Term ({data.shortTermPrediction.timeframe}) Forecast
         </h4>
-        <div className="flex items-baseline gap-2">
-          <span className="text-3xl font-bold text-white">
+        <div className="relative flex flex-col sm:flex-row sm:items-baseline gap-2">
+          <span className="text-3xl sm:text-4xl lg:text-5xl font-bold text-white">
             {currencySymbol}{formatPrice(data.shortTermPrediction.price, currency)}
           </span>
-          <span className={`text-lg font-semibold ${isShortTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
-            {isShortTermPredictionPositive ? '+' : ''}{currencySymbol}{formatPrice(Math.abs(data.shortTermPrediction.change), currency)}
-          </span>
-          <span className={`text-sm ${isShortTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
-            ({isShortTermPredictionPositive ? '+' : ''}{data.shortTermPrediction.changePercent.toFixed(2)}%)
-          </span>
+          <div className="flex items-baseline gap-2 flex-wrap">
+            <span className={`text-base sm:text-lg lg:text-xl font-semibold ${isShortTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
+              {isShortTermPredictionPositive ? '+' : ''}{currencySymbol}{formatPrice(Math.abs(data.shortTermPrediction.change), currency)}
+            </span>
+            <span className={`text-sm sm:text-base ${isShortTermPredictionPositive ? 'text-green-400' : 'text-red-400'} px-2 py-0.5 bg-slate-800/50 rounded-lg`}>
+              ({isShortTermPredictionPositive ? '+' : ''}{data.shortTermPrediction.changePercent.toFixed(2)}%)
+            </span>
+          </div>
         </div>
-      </div>
+      </motion.div>
 
       {/* 1 Month Prediction */}
       {data.oneMonthPrediction && (
-        <div className="mb-6 p-5 bg-gradient-to-br from-blue-900/30 via-indigo-800/20 to-purple-900/20 border border-blue-500/40 rounded-2xl shadow-lg shadow-blue-500/10">
-          <h4 className="text-sm font-bold text-blue-300 mb-3 flex items-center gap-2">
-            <span className="text-lg">📈</span> 1 Month Forecast
+        <motion.div 
+          className="relative mb-4 sm:mb-6 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-blue-900/30 via-indigo-800/20 to-purple-900/20 border border-blue-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-blue-500/10 backdrop-blur-sm hover:border-blue-500/60 transition-all duration-300"
+          initial={{ opacity: 0, x: 50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.4 }}
+          whileHover={{ scale: 1.02, boxShadow: '0 20px 50px rgba(59, 130, 246, 0.3)' }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-blue-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
+          <h4 className="relative text-sm sm:text-base font-bold bg-gradient-to-r from-blue-400 to-cyan-400 bg-clip-text text-transparent mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
+            <span className="flex items-center gap-2">
+              <span className="text-xl sm:text-2xl">📈</span> 1 Month Forecast
+            </span>
             {previousPrediction && previousPrediction.oneMonthPrediction && (
               (() => {
                 const priceDiff = currentPrediction.oneMonthPrediction.expectedPrice - previousPrediction.oneMonthPrediction.expectedPrice;
                 if (Math.abs(priceDiff) > 0.1) {
                   return (
-                    <span className={`ml-auto text-xs ${priceDiff > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`sm:ml-auto text-xs px-2 py-1 rounded-lg backdrop-blur-sm ${priceDiff > 0 ? 'text-green-400 bg-green-500/20' : 'text-red-400 bg-red-500/20'}`}>
                       {priceDiff > 0 ? '↑' : '↓'} {Math.abs(priceDiff).toFixed(2)}
                     </span>
                   );
@@ -995,39 +1138,51 @@ export default function StockCard({ data }: { data: StockData }) {
               })()
             )}
           </h4>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-white">
+          <div className="relative flex flex-col gap-2 sm:gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
                 {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.expectedPrice, currency)}
               </span>
-              <span className={`text-sm ${currentPrediction.oneMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <span className={`text-base sm:text-lg px-2 py-1 bg-slate-800/50 rounded-lg ${currentPrediction.oneMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 ({currentPrediction.oneMonthPrediction.changePercent >= 0 ? '+' : ''}{currentPrediction.oneMonthPrediction.changePercent.toFixed(2)}%)
               </span>
             </div>
-            <div className="flex items-baseline gap-2 text-sm">
-              <span className={`flex-1 ${currentPrediction.oneMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 text-xs sm:text-sm">
+              <span className={`font-semibold ${currentPrediction.oneMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {currentPrediction.oneMonthPrediction.changePercent >= 0 ? '+' : ''}{currencySymbol}{formatPrice(Math.abs(currentPrediction.oneMonthPrediction.change), currency)}
               </span>
               <span className="text-gray-400">
-                Conservative: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.conservativePrice, currency)} | 
-                Optimistic: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.optimisticPrice, currency)}
+                <span className="hidden sm:inline">Conservative: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.conservativePrice, currency)} | Optimistic: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.optimisticPrice, currency)}</span>
+                <span className="sm:hidden block space-y-1">
+                  <div>Conservative: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.conservativePrice, currency)}</div>
+                  <div>Optimistic: {currencySymbol}{formatPrice(currentPrediction.oneMonthPrediction.optimisticPrice, currency)}</div>
+                </span>
               </span>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* 3 Month Prediction */}
       {data.threeMonthPrediction && (
-        <div className="mb-6 p-5 bg-gradient-to-br from-teal-900/30 via-emerald-800/20 to-cyan-900/20 border border-teal-500/40 rounded-2xl shadow-lg shadow-teal-500/10">
-          <h4 className="text-sm font-bold text-teal-300 mb-3 flex items-center gap-2">
-            <span className="text-lg">📊</span> 3 Month Forecast
+        <motion.div 
+          className="relative mb-4 sm:mb-6 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-teal-900/30 via-emerald-800/20 to-cyan-900/20 border border-teal-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-teal-500/10 backdrop-blur-sm hover:border-teal-500/60 transition-all duration-300"
+          initial={{ opacity: 0, x: -50 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.5, delay: 0.5 }}
+          whileHover={{ scale: 1.02, boxShadow: '0 20px 50px rgba(20, 184, 166, 0.3)' }}
+        >
+          <div className="absolute inset-0 bg-gradient-to-br from-teal-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
+          <h4 className="relative text-sm sm:text-base font-bold bg-gradient-to-r from-teal-400 to-emerald-400 bg-clip-text text-transparent mb-3 sm:mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
+            <span className="flex items-center gap-2">
+              <span className="text-xl sm:text-2xl">📊</span> 3 Month Forecast
+            </span>
             {previousPrediction && previousPrediction.threeMonthPrediction && (
               (() => {
                 const priceDiff = currentPrediction.threeMonthPrediction.expectedPrice - previousPrediction.threeMonthPrediction.expectedPrice;
                 if (Math.abs(priceDiff) > 0.1) {
                   return (
-                    <span className={`ml-auto text-xs ${priceDiff > 0 ? 'text-green-400' : 'text-red-400'}`}>
+                    <span className={`sm:ml-auto text-xs px-2 py-1 rounded-lg backdrop-blur-sm ${priceDiff > 0 ? 'text-green-400 bg-green-500/20' : 'text-red-400 bg-red-500/20'}`}>
                       {priceDiff > 0 ? '↑' : '↓'} {Math.abs(priceDiff).toFixed(2)}
                     </span>
                   );
@@ -1036,78 +1191,85 @@ export default function StockCard({ data }: { data: StockData }) {
               })()
             )}
           </h4>
-          <div className="flex flex-col gap-1">
-            <div className="flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-white">
+          <div className="relative flex flex-col gap-2 sm:gap-3">
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
                 {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.expectedPrice, currency)}
               </span>
-              <span className={`text-sm ${currentPrediction.threeMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+              <span className={`text-base sm:text-lg px-2 py-1 bg-slate-800/50 rounded-lg ${currentPrediction.threeMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 ({currentPrediction.threeMonthPrediction.changePercent >= 0 ? '+' : ''}{currentPrediction.threeMonthPrediction.changePercent.toFixed(2)}%)
               </span>
             </div>
-            <div className="flex items-baseline gap-2 text-sm">
-              <span className={`flex-1 ${currentPrediction.threeMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+            <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 text-xs sm:text-sm">
+              <span className={`font-semibold ${currentPrediction.threeMonthPrediction.changePercent >= 0 ? 'text-green-400' : 'text-red-400'}`}>
                 {currentPrediction.threeMonthPrediction.changePercent >= 0 ? '+' : ''}{currencySymbol}{formatPrice(Math.abs(currentPrediction.threeMonthPrediction.change), currency)}
               </span>
               <span className="text-gray-400">
-                Conservative: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.conservativePrice, currency)} | 
-                Optimistic: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.optimisticPrice, currency)}
+                <span className="hidden sm:inline">Conservative: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.conservativePrice, currency)} | Optimistic: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.optimisticPrice, currency)}</span>
+                <span className="sm:hidden block space-y-1">
+                  <div>Conservative: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.conservativePrice, currency)}</div>
+                  <div>Optimistic: {currencySymbol}{formatPrice(currentPrediction.threeMonthPrediction.optimisticPrice, currency)}</div>
+                </span>
               </span>
             </div>
           </div>
-        </div>
+        </motion.div>
       )}
 
       {/* Long Term Prediction */}
-      <div className="mb-6 p-5 bg-gradient-to-br from-cyan-900/30 via-teal-800/20 to-blue-900/20 border border-cyan-500/40 rounded-2xl shadow-lg shadow-cyan-500/10">
-        <h4 className="text-sm font-bold text-cyan-300 mb-3 flex items-center gap-2">
-          <span className="text-lg">🔮</span> Long Term ({data.longTermPrediction.timeframe}) Forecast
+      <div className="relative mb-6 sm:mb-8 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-cyan-900/30 via-teal-800/20 to-blue-900/20 border border-cyan-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-cyan-500/10 backdrop-blur-sm hover:border-cyan-500/60 transition-all duration-300">
+        <div className="absolute inset-0 bg-gradient-to-br from-cyan-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
+        <h4 className="relative text-sm sm:text-base font-bold bg-gradient-to-r from-cyan-400 to-blue-400 bg-clip-text text-transparent mb-3 sm:mb-4 flex items-center gap-2">
+          <span className="text-xl sm:text-2xl">🔮</span> Long Term ({data.longTermPrediction.timeframe}) Forecast
         </h4>
-        <div className="flex flex-col gap-1">
-          <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-bold text-white">
+        <div className="relative flex flex-col gap-2 sm:gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-2">
+            <span className="text-2xl sm:text-3xl lg:text-4xl font-bold text-white">
               {currencySymbol}{formatPrice(data.longTermPrediction.expectedPrice, currency)}
             </span>
-            <span className={`text-sm ${isLongTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
+            <span className={`text-base sm:text-lg px-2 py-1 bg-slate-800/50 rounded-lg ${isLongTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
               ({isLongTermPredictionPositive ? '+' : ''}{data.longTermPrediction.changePercent.toFixed(2)}%)
             </span>
           </div>
-          <div className="flex items-baseline gap-2 text-sm">
-            <span className={`flex-1 ${isLongTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
+          <div className="flex flex-col sm:flex-row sm:items-baseline gap-2 text-xs sm:text-sm">
+            <span className={`font-semibold ${isLongTermPredictionPositive ? 'text-green-400' : 'text-red-400'}`}>
               {isLongTermPredictionPositive ? '+' : ''}{currencySymbol}{formatPrice(Math.abs(data.longTermPrediction.change), currency)}
             </span>
             <span className="text-gray-400">
-              Conservative: {currencySymbol}{formatPrice(data.longTermPrediction.conservativePrice, currency)} | 
-              Optimistic: {currencySymbol}{formatPrice(data.longTermPrediction.optimisticPrice, currency)}
+              <span className="hidden sm:inline">Conservative: {currencySymbol}{formatPrice(data.longTermPrediction.conservativePrice, currency)} | Optimistic: {currencySymbol}{formatPrice(data.longTermPrediction.optimisticPrice, currency)}</span>
+              <span className="sm:hidden block space-y-1">
+                <div>Conservative: {currencySymbol}{formatPrice(data.longTermPrediction.conservativePrice, currency)}</div>
+                <div>Optimistic: {currencySymbol}{formatPrice(data.longTermPrediction.optimisticPrice, currency)}</div>
+              </span>
             </span>
           </div>
         </div>
       </div>
 
       {/* Short Term Chart */}
-      <div className="mb-6">
-        <div className="flex items-center justify-between mb-3">
+      <div className="relative mb-6 sm:mb-8">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
           <div className="flex items-center gap-2">
             <Activity size={18} className="text-purple-400" />
-            <h4 className="text-sm font-semibold text-gray-300">6-Month Price Projection</h4>
+            <h4 className="text-sm sm:text-base font-semibold text-white">6-Month Price Projection</h4>
           </div>
-          <div className="flex items-center gap-3 text-xs">
-            <div className="flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
               <div className="w-3 h-0.5 bg-red-500"></div>
-              <span className="text-gray-400">Conservative</span>
+              <span className="text-gray-300">Conservative</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
               <div className="w-3 h-0.5 bg-purple-500"></div>
-              <span className="text-gray-400">Expected</span>
+              <span className="text-gray-300">Expected</span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
               <div className="w-3 h-0.5 bg-green-500"></div>
-              <span className="text-gray-400">Optimistic</span>
+              <span className="text-gray-300">Optimistic</span>
             </div>
           </div>
         </div>
-        <div className="bg-gray-800/40 rounded-xl p-4">
-          <ResponsiveContainer width="100%" height={250}>
+        <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 rounded-2xl p-3 sm:p-4 lg:p-6 border border-purple-500/20 hover:border-purple-500/40 transition-all duration-300 backdrop-blur-sm">
+          <ResponsiveContainer width="100%" height={250} className="sm:h-80 lg:h-96">
             <AreaChart data={data.longTermChartData}>
               <defs>
                 <linearGradient id="conservativeGradient" x1="0" y1="0" x2="0" y2="1">
@@ -1144,13 +1306,13 @@ export default function StockCard({ data }: { data: StockData }) {
                   color: '#f3f4f6',
                   padding: '8px 12px'
                 }}
-                formatter={(value: any, name: string) => {
+                formatter={(value: any, name: string | undefined) => {
                   const labels: Record<string, string> = {
                     'conservative': 'Conservative',
                     'expected': 'Expected',
                     'optimistic': 'Optimistic'
                   };
-                  return [`${currencySymbol}${formatPrice(value, currency)}`, labels[name] || name];
+                  return [`${currencySymbol}${formatPrice(value, currency)}`, labels[name || ''] || (name || '')];
                 }}
               />
               
@@ -3229,10 +3391,6 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
       )}
-    </div>    
-      
-</div>
-      )}
-    </div>
+      </div>
   );
 }

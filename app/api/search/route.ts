@@ -22,6 +22,29 @@ import {
     type ParsedSegment,
     type CategorizedRisks
 } from '@/app/utils/textParsing';
+import { 
+    checkRateLimit, 
+    sanitizeSymbol, 
+    sanitizeQuery, 
+    validateRequestSize, 
+    getClientIp, 
+    getSecurityHeaders,
+    validateApiKey,
+    logSecurityEvent,
+    validateMongoSymbol,
+    sanitizeMongoInput,
+    validateUrl,
+    sanitizeError,
+    redactSensitiveData,
+    validateEnvironment
+} from '../../utils/security';
+
+// Validate environment variables at startup
+const envValidation = validateEnvironment();
+if (!envValidation.valid) {
+    console.error('⚠️ [CRITICAL] Application starting with missing environment variables:', envValidation.missing);
+    console.error('⚠️ Some features may not work correctly. Please check your .env file.');
+}
 
 // ? GROQ CLIENT (imported from utils/aiProviders.ts)
 // ? PERPLEXITY CLIENT (imported from utils/aiProviders.ts)
@@ -79,6 +102,35 @@ const CACHE_DURATION_FUNDAMENTALS = 24 * 60 * 60 * 1000; // 24 hours for fundame
 const CACHE_DURATION_TRANSCRIPT = 90 * 24 * 60 * 60 * 1000; // 90 DAYS for quarterly transcripts (smart invalidation on new earnings)
 const CACHE_DURATION_ANNUAL_REPORT = 6 * 30 * 24 * 60 * 60 * 1000; // 6 MONTHS for annual reports (updated yearly)
 const CACHE_DURATION = 15 * 60 * 1000; // 15 minutes default (for backward compatibility)
+
+// ========================
+// REQUEST TIMEOUT UTILITY
+// ========================
+async function fetchWithTimeout(url: string, options: RequestInit = {}, timeoutMs: number = 10000): Promise<Response> {
+    // Validate URL first (SSRF protection)
+    const urlValidation = validateUrl(url);
+    if (!urlValidation.valid) {
+        throw new Error(`URL validation failed: ${urlValidation.error}`);
+    }
+    
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), timeoutMs);
+    
+    try {
+        const response = await fetch(url, {
+            ...options,
+            signal: controller.signal
+        });
+        clearTimeout(timeout);
+        return response;
+    } catch (error: any) {
+        clearTimeout(timeout);
+        if (error.name === 'AbortError') {
+            throw new Error(`Request timeout after ${timeoutMs}ms`);
+        }
+        throw error;
+    }
+}
 
 // Transcript Cache with metadata (using CacheManager utility)
 const transcriptCache = new CacheManager<any>('Transcript');
@@ -886,132 +938,139 @@ async function mcpGetIndianComprehensiveData(
 ) {
     const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
     
+    // Validate symbol before MongoDB operations
+    if (!validateMongoSymbol(cleanSymbol)) {
+        throw new Error('Invalid symbol format for database operations');
+    }
+    
     try {
         // ============================================
-        // PHASE 1: CHECK AVAILABLE VERSIONS FROM SCREENER.IN
+        // PHASE 1: PARALLEL CHECK - MongoDB Cache & Screener.in Versions
         // ============================================
-        console.log(`🔍 [Smart Cache] Checking for newer data on Screener.in...`);
+        console.log(`🔍 [Smart Cache] Parallel checking cache & available versions...`);
         
-        const { checkAvailableDataVersions } = await import('../../utils/screenerScraper');
-        const availableVersions = await checkAvailableDataVersions(symbol);
-        
-        // ============================================
-        // PHASE 2: CHECK MONGODB CACHE & COMPARE VERSIONS
-        // ============================================
         await connectToDatabase();
         
+        // 🚀 OPTIMIZATION: Check DB cache and Screener versions in parallel
+        const [availableVersions, cachedReport, cachedQuarterly, cachedEarningsCall] = await Promise.all([
+            (async () => {
+                try {
+                    const { checkAvailableDataVersions } = await import('../../utils/screenerScraper');
+                    return await checkAvailableDataVersions(symbol);
+                } catch (error) {
+                    console.warn(`⚠️ [Screener Check] Failed:`, error);
+                    return { latestFiscalYear: null, latestQuarter: null, latestConcallQuarter: null };
+                }
+            })(),
+            
+            // Annual Report Cache Check
+            !forceRefresh ? AnnualReportCache.findOne({
+                symbol: cleanSymbol,
+                reportType: 'Consolidated',
+                expiresAt: { $gt: new Date() }
+            }).sort({ fiscalYear: -1 }).limit(1) : Promise.resolve(null),
+            
+            // Quarterly Report Cache Check
+            !forceRefreshQuarterly ? QuarterlyReportCache.findOne({
+                symbol: cleanSymbol,
+                expiresAt: { $gt: new Date() }
+            }).sort({ fiscalYear: -1, quarter: -1 }).limit(1) : Promise.resolve(null),
+            
+            // Earnings Call Cache Check
+            !forceRefreshEarningsCall ? EarningsCallCache.findOne({
+                symbol: cleanSymbol,
+                expiresAt: { $gt: new Date() }
+            }).sort({ callDate: -1 }).limit(1) : Promise.resolve(null)
+        ]);
+        
+        // ============================================
+        // PHASE 2: DETERMINE WHAT NEEDS REFRESH
+        // ============================================
         let annualReportInsights = null;
         let annualFromCache = false;
         let needsFreshAnnual = forceRefresh;
         
-        if (!forceRefresh) {
+        if (!forceRefresh && cachedReport) {
             try { 
-                const cachedReport = await AnnualReportCache.findOne({
-                    symbol: cleanSymbol,
-                    reportType: 'Consolidated',
-                    expiresAt: { $gt: new Date() }
-                }).sort({ fiscalYear: -1 }).limit(1);
+                const cachedFY = cachedReport.fiscalYear;
+                const latestFY = availableVersions.latestFiscalYear;
                 
-                if (cachedReport) {
-                    const cachedFY = cachedReport.fiscalYear;
-                    const latestFY = availableVersions.latestFiscalYear;
-                    
-                    if (latestFY && compareFiscalYears(latestFY, cachedFY) > 0) {
-                        console.log(`🆕 [Annual Report] Newer FY available: ${latestFY} (cached: ${cachedFY})`);
-                        needsFreshAnnual = true;
-                    } else {
-                        console.log(`✅ [Annual Report] Cache is up-to-date: ${cachedFY}`);
-                        annualReportInsights = cachedReport.data;
-                        annualFromCache = true;
-                    }
-                } else {
-                    console.log(`📭 [Annual Report] No cache found`);
+                if (latestFY && compareFiscalYears(latestFY, cachedFY) > 0) {
+                    console.log(`🆕 [Annual] Newer FY available: ${latestFY} (cached: ${cachedFY})`);
                     needsFreshAnnual = true;
+                } else {
+                    console.log(`✅ [Annual] Cache up-to-date: ${cachedFY}`);
+                    annualReportInsights = cachedReport.data;
+                    annualFromCache = true;
                 }
             } catch (dbError: any) {
                 console.warn(`⚠️ [MongoDB Annual] Cache check failed: ${dbError.message}`);
             }
+        } else if (!cachedReport) {
+            needsFreshAnnual = true;
         }
         
-        // ============================================
-        // PHASE 3: CHECK MONGODB CACHE FOR QUARTERLY REPORT
-        // ============================================
+        // Quarterly Report Cache Check Result
         let quarterlyInsights = null;
         let quarterlyFromCache = false;
         let quarter = 'Unknown';
         let rawTranscript = '';
         let needsFreshQuarterly = forceRefreshQuarterly;
         
-        if (!forceRefreshQuarterly) {
+        if (!forceRefreshQuarterly && cachedQuarterly) {
             try {
-                const cachedQuarterly = await QuarterlyReportCache.findOne({
-                    symbol: cleanSymbol,
-                    expiresAt: { $gt: new Date() }
-                }).sort({ fiscalYear: -1, quarter: -1 }).limit(1);
+                const cachedQ = cachedQuarterly.quarter;
+                const latestQ = availableVersions.latestQuarter;
                 
-                if (cachedQuarterly) {
-                    const cachedQ = cachedQuarterly.quarter;
-                    const latestQ = availableVersions.latestQuarter;
-                    
-                    if (latestQ && latestQ !== cachedQ) {
-                        console.log(`🆕 [Quarterly] Newer quarter available: ${latestQ} (cached: ${cachedQ})`);
-                        needsFreshQuarterly = true;
-                    } else {
-                        console.log(`✅ [Quarterly] Cache is up-to-date: ${cachedQ}`);
-                        quarterlyInsights = cachedQuarterly.data;
-                        quarter = cachedQuarterly.quarter;
-                        rawTranscript = cachedQuarterly.rawTranscript || '';
-                        quarterlyFromCache = true;
-                    }
-                } else {
-                    console.log(`📭 [Quarterly] No cache found`);
+                if (latestQ && latestQ !== cachedQ) {
+                    console.log(`🆕 [Quarterly] Newer quarter available: ${latestQ} (cached: ${cachedQ})`);
                     needsFreshQuarterly = true;
+                } else {
+                    console.log(`✅ [Quarterly] Cache is up-to-date: ${cachedQ}`);
+                    quarterlyInsights = cachedQuarterly.data;
+                    quarter = cachedQuarterly.quarter;
+                    rawTranscript = cachedQuarterly.rawTranscript || '';
+                    quarterlyFromCache = true;
                 }
             } catch (dbError: any) {
                 console.warn(`⚠️ [MongoDB Quarterly] Cache check failed: ${dbError.message}`);
             }
+        } else if (!cachedQuarterly) {
+            console.log(`📭 [Quarterly] No cache found`);
+            needsFreshQuarterly = true;
         }
 
-        // ============================================
-        // PHASE 4: CHECK MONGODB CACHE FOR EARNINGS CALL
-        // ============================================
+        // Earnings Call Cache Check Result
         let earningsCallInsights = null;
         let earningsCallFromCache = false;
         let needsFreshEarningsCall = forceRefreshEarningsCall;
 
-        if (!forceRefreshEarningsCall) {
+        if (!forceRefreshEarningsCall && cachedEarningsCall) {
             try {
-                const cachedEarningsCall = await EarningsCallCache.findOne({
-                    symbol: cleanSymbol,
-                    expiresAt: { $gt: new Date() }
-                }).sort({ callDate: -1 }).limit(1);
+                const cachedConcallQ = cachedEarningsCall.quarter;
+                const latestConcallQ = availableVersions.latestConcallQuarter;
                 
-                if (cachedEarningsCall) {
-                    const cachedConcallQ = `${cachedEarningsCall.quarter} FY${cachedEarningsCall.fiscalYear}`;
-                    const latestConcallQ = availableVersions.latestConcallQuarter;
-                    
-                    if (latestConcallQ && latestConcallQ !== cachedConcallQ) {
-                        console.log(`🆕 [Earnings Call] Newer transcript available: ${latestConcallQ} (cached: ${cachedConcallQ})`);
-                        needsFreshEarningsCall = true;
-                    } else {
-                        console.log(`✅ [Earnings Call] Cache is up-to-date: ${cachedConcallQ}`);
-                        earningsCallInsights = cachedEarningsCall.data;
-                        earningsCallFromCache = true;
-                    }
-                } else {
-                    console.log(`📭 [Earnings Call] No cache found`);
+                if (latestConcallQ && latestConcallQ !== cachedConcallQ) {
+                    console.log(`🆕 [Earnings Call] Newer transcript available: ${latestConcallQ} (cached: ${cachedConcallQ})`);
                     needsFreshEarningsCall = true;
+                } else {
+                    console.log(`✅ [Earnings Call] Cache up-to-date: ${cachedConcallQ}`);
+                    earningsCallInsights = cachedEarningsCall.data;
+                    earningsCallFromCache = true;
                 }
             } catch (dbError: any) {
                 console.warn(`⚠️ [MongoDB Earnings Call] Cache check failed: ${dbError.message}`);
             }
+        } else if (!cachedEarningsCall) {
+            console.log(`📭 [Earnings Call] No cache found`);
+            needsFreshEarningsCall = true;
         }
         
         // ============================================
-        // PHASE 5: RETURN CACHE IF ALL UP-TO-DATE
+        // PHASE 3: RETURN CACHE IF ALL UP-TO-DATE (Parallel Load Already Complete!)
         // ============================================
         if (!needsFreshAnnual && !needsFreshQuarterly && !needsFreshEarningsCall) {
-            console.log(`💾 [Smart Cache] All data is up-to-date for ${cleanSymbol}`);
+            console.log(`💾 [Smart Cache] All data is up-to-date for ${cleanSymbol} ⚡ (Parallel Load)`);
             return {
                 transcript: rawTranscript,
                 annualReport: '',
@@ -1026,15 +1085,14 @@ async function mcpGetIndianComprehensiveData(
         }
         
         // ============================================
-        // PHASE 6: FETCH FRESH DATA IF NEEDED
+        // PHASE 4: FETCH FRESH DATA FROM SCREENER.IN
         // ============================================
-        // PHASE 6: VERIFY CREDENTIALS & FETCH FRESH DATA
-        // ============================================
+        console.log(`🔄 [Hybrid Fetch] Cached items available, fetching new data...`);
+        console.log(`   📊 Status: Annual=${annualFromCache ? '✅ Cached' : '🆕 Fetch'}, Quarterly=${quarterlyFromCache ? '✅ Cached' : '🆕 Fetch'}, Earnings=${earningsCallFromCache ? '✅ Cached' : '🆕 Fetch'}`);
+        
         if (!process.env.SCREENER_EMAIL || !process.env.SCREENER_PASSWORD) {
             throw new Error('Screener.in credentials required');
         }
-        
-        console.log(`🔐 [Screener.in] Fetching fresh data for ${cleanSymbol}...`);
         
         const { fetchScreenerComprehensiveData } = await import('../../utils/screenerScraper');
         const screenerData = await fetchScreenerComprehensiveData(symbol);
@@ -1048,71 +1106,59 @@ async function mcpGetIndianComprehensiveData(
             concallQuarter: screenerData.concallTranscript?.quarter
         });
         
-        let annualReport = '';
-
         // ============================================
-        // PHASE 5: PROCESS & EXTRACT QUARTERLY DATA (Screener.in)
+        // PHASE 5: PARALLEL AI EXTRACTION FOR NEW DATA
         // ============================================
-        if (!quarterlyFromCache && screenerData.transcript) {
-            rawTranscript = screenerData.transcript.content;
-            quarter = screenerData.transcript.quarter;
-            
-            console.log(`🔍 [Quarterly] Processing ${quarter} data from Screener.in...`);
-            
-            // Extract quarterly insights using AI
-            quarterlyInsights = await extractQuarterlyInsights(
-                cleanSymbol,
-                rawTranscript,
-                quarter,
-                screenerData.transcript.fiscalYear
+        const processingPromises = [];
+        
+        // Only process quarterly if needed
+        if (needsFreshQuarterly && screenerData.transcript) {
+            console.log(`🔄 [Quarterly] Queuing AI extraction: ${screenerData.transcript.quarter}...`);
+            const transcript = screenerData.transcript; // Capture for closure
+            processingPromises.push(
+                extractQuarterlyInsights(
+                    cleanSymbol,
+                    transcript.content,
+                    transcript.quarter,
+                    transcript.fiscalYear
+                ).then(insights => ({ 
+                    type: 'quarterly' as const, 
+                    data: insights, 
+                    quarter: transcript.quarter, 
+                    rawTranscript: transcript.content 
+                }))
             );
-            
-            if (quarterlyInsights) {
-                console.log(`✅ [Quarterly] Extracted insights for ${quarter}`);
-            } else {
-                console.warn(`⚠️ [Quarterly] Failed to extract insights for ${quarter}`);
-            }
-            
-            // Add delay to respect rate limits
-            await new Promise(resolve => setTimeout(resolve, 10000));
         }
-
-        if (!earningsCallFromCache && screenerData.concallTranscript) {
-            console.log(`📞 [Earnings Call] Found transcript: ${screenerData.concallTranscript.quarter}`);
-            console.log('🔍 [DEBUG] Concall data:', {
-                hasUrl: !!screenerData.concallTranscript.url,
-                url: screenerData.concallTranscript.url,
-                quarter: screenerData.concallTranscript.quarter,
-                fiscalYear: screenerData.concallTranscript.fiscalYear
-            });
-            
-            // Store just the URL - no AI extraction during search
-            earningsCallInsights = {
-                quarter: screenerData.concallTranscript.quarter,
-                fiscalYear: screenerData.concallTranscript.fiscalYear,
-                callDate: new Date().toISOString().split('T')[0],
-                pdfUrl: screenerData.concallTranscript.url,
-                source: 'Screener.in Concalls'
-            };
-            
-            console.log('✅ [Earnings Call] URL stored for on-demand summarization');
+        
+        // Only process earnings call if needed
+        if (needsFreshEarningsCall && screenerData.concallTranscript) {
+            console.log(`🔄 [Earnings Call] Queuing metadata storage: ${screenerData.concallTranscript.quarter}...`);
+            processingPromises.push(
+                Promise.resolve({
+                    type: 'earningsCall' as const,
+                    data: {
+                        quarter: screenerData.concallTranscript.quarter,
+                        fiscalYear: screenerData.concallTranscript.fiscalYear,
+                        callDate: new Date().toISOString().split('T')[0],
+                        pdfUrl: screenerData.concallTranscript.url,
+                        source: 'Screener.in Concalls'
+                    }
+                })
+            );
         }
-
-        // ============================================
-        // PHASE 6: PROCESS & EXTRACT ANNUAL REPORT (if not cached)
-        // ============================================
-        if (!annualFromCache && screenerData.annualReport) {
-             console.log(`⏳ [PHASE 6] Starting ANNUAL report extraction (sequential after quarterly)...`);
-            annualReport = `FISCAL YEAR: ${screenerData.annualReport.fiscalYear}\nSOURCE: ${screenerData.annualReport.source}\nURL: ${screenerData.annualReport.url}\n\n${screenerData.annualReport.content}`;
-            console.log(`✅ [Annual Report] FY${screenerData.annualReport.fiscalYear} (${screenerData.annualReport.content.length} chars)`);
+        
+        // Only process annual report if needed
+        if (needsFreshAnnual && screenerData.annualReport) {
+            console.log(`🔄 [Annual] Queuing AI extraction: FY${screenerData.annualReport.fiscalYear}...`);
+            const annualReportData = screenerData.annualReport; // Capture for closure
+            const annualReport = `FISCAL YEAR: ${annualReportData.fiscalYear}\nSOURCE: ${annualReportData.source}\nURL: ${annualReportData.url}\n\n${annualReportData.content}`;
             
-            // Keep existing annual report AI extraction (lines 601-2116)
-            if (annualReport && annualReport.length > 0) {
-                console.log(`🔍 [AI Annual] Extracting insights...`);
-            }
-            
-            try {
-                const extractionPrompt = `⚠️⚠️⚠️ CRITICAL: READ AND EXTRACT FROM THE ACTUAL DOCUMENT BELOW ⚠️⚠️⚠️
+            processingPromises.push(
+                (async () => {
+                    console.log(`🔍 [AI Annual] Extracting insights...`);
+                    
+                    try {
+                        const extractionPrompt = `⚠️⚠️⚠️ CRITICAL: READ AND EXTRACT FROM THE ACTUAL DOCUMENT BELOW ⚠️⚠️⚠️
 Extract from Indian annual report:
 ${annualReport.substring(0, 2000000)}
 
@@ -2594,64 +2640,84 @@ if (extractedInsights) {
                         }
                     }
                     
+                    // Save to MongoDB
+                    await AnnualReportCache.findOneAndUpdate(
+                        { 
+                            symbol: cleanSymbol, 
+                            fiscalYear: annualReportData.fiscalYear,
+                            reportType: 'Consolidated'
+                        },
+                        {
+                            $set: {
+                                data: extractedInsights,
+                                rawReport: annualReport,
+                                source: annualReportData.source,
+                                url: annualReportData.url,
+                                fetchedAt: new Date(),
+                                expiresAt: new Date(Date.now() + 6 * 30 * 24 * 60 * 60 * 1000)
+                            }
+                        },
+                        { upsert: true }
+                    );
+                    console.log(`💾 [MongoDB Annual] Saved FY${annualReportData.fiscalYear} (6M TTL)`);
                     
-                    
-                }
-            } catch (extractError: any) {
-                console.warn(`⚠️ [AI] Failed to extract annual report insights: ${extractError.message}`);
-            }
+                    return { type: 'annual' as const, data: extractedInsights };
+                }  // Close if (extractedInsights) block
+                    } catch (extractError: any) {
+                        console.error(`❌ [Annual] AI extraction failed:`, extractError.message);
+                        return { type: 'annual' as const, data: null };
+                    }
+                })()
+            );
         }
-
-                if (annualReportInsights) {
-            try {
-                await connectToDatabase();
-                
-                const expiresAt = new Date();
-                expiresAt.setMonth(expiresAt.getMonth() + 6); // 6 months from now
-                
-                await AnnualReportCache.findOneAndUpdate(
-                    {
-                        symbol: cleanSymbol,
-                        fiscalYear: annualReportInsights.fiscalYear,
-                        reportType: annualReportInsights.reportType || 'Consolidated'
-                    },
-                    {
-                        $set: {
-                            data: annualReportInsights,
-                            rawPdfUrl: screenerData.annualReport?.url || '',
-                            source: 'BSE India via Screener.in',
-                            fetchedAt: new Date(),
-                            expiresAt: expiresAt
-                        }
-                    },
-                    { upsert: true, new: true }
-                );
-            
-                console.log(`💾 [MongoDB] Saved ${cleanSymbol} FY${annualReportInsights.fiscalYear} (6-month TTL)`);
-            } catch (dbSaveError: any) {
-                // Don't fail the request if DB save fails - data still works
-                console.warn(`⚠️ [MongoDB] Save failed (non-critical): ${dbSaveError.message}`);
-            }
-        }
-    
-        // Cache the results
-        batchDataCache.set(cleanSymbol, { transcript: rawTranscript, annualReport, quarter, annualReportInsights });
         
-    
+        // ============================================
+        // PHASE 6: AWAIT PARALLEL PROCESSING & MERGE RESULTS
+        // ============================================
+        if (processingPromises.length > 0) {
+            console.log(`⚡ [Parallel] Processing ${processingPromises.length} new items simultaneously...`);
+            const results = await Promise.all(processingPromises);
+            
+            // Merge results with cached data
+            results.forEach(result => {
+                if (!result) return;
+                
+                if (result.type === 'quarterly' && result.data) {
+                    quarterlyInsights = result.data;
+                    if ('quarter' in result) quarter = result.quarter;
+                    if ('rawTranscript' in result) rawTranscript = result.rawTranscript;
+                } else if (result.type === 'earningsCall' && result.data) {
+                    earningsCallInsights = result.data;
+                } else if (result.type === 'annual' && result.data) {
+                    annualReportInsights = result.data;
+                }
+            });
+            
+            console.log(`✅ [Parallel] All new data processed successfully`);
+        }
+        
+        // Cache the results
+        batchDataCache.set(cleanSymbol, { transcript: rawTranscript, annualReport: '', quarter, annualReportInsights });
+        
         return {
             transcript: rawTranscript,
-            annualReport: annualReport,
+            annualReport: '',
             annualReportInsights: annualReportInsights,
             quarterlyInsights: quarterlyInsights,
             earningsCallInsights: earningsCallInsights,
             fromCache: annualFromCache && quarterlyFromCache && earningsCallFromCache,
             quarter: quarter,
-            source: 'Screener.in Direct + BSE India PDF',
-            screenerSource: true
+            source: 'Hybrid (Cache + Fresh Fetch)',
+            screenerSource: true,
+            optimization: {
+                annualCached: annualFromCache,
+                quarterlyCached: quarterlyFromCache,
+                earningsCallCached: earningsCallFromCache,
+                parallelProcessing: processingPromises.length > 0
+            }
         };
         
-        
- } catch (error: any) {
+    } catch (error: any) {
         console.error(`❌ [Comprehensive Data] Failed:`, error.message);
         
         return {
@@ -2659,6 +2725,7 @@ if (extractedInsights) {
             annualReport: '',
             annualReportInsights: null,
             quarterlyInsights: null,
+            earningsCallInsights: null,
             fromCache: false,
             quarter: 'Unknown',
             source: 'Error',
@@ -2714,8 +2781,10 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
         }
         
         // 1. Fetch current price from Yahoo Finance
-        const yahooResponse = await fetch(
-            `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`
+        const yahooResponse = await fetchWithTimeout(
+            `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`,
+            {},
+            5000 // 5 second timeout
         );
         const yahooData = await yahooResponse.json();
         
@@ -2953,12 +3022,23 @@ Provide detailed analysis in this EXACT JSON format:
             longTermChartData: longTermChartData,
             bulletPoints: predictions.bulletPoints,
             fundamentals: fundamentals,
-            aiIntelligence: !skipAI ? {
-                shortTermConfidence: predictions.tradingSignal?.strength || 'Medium',
-                longTermConfidence: predictions.tradingSignal?.strength || 'Medium',
-                analysisTimestamp: new Date().toISOString(),
-                hasAIAnalysis: true
-            } : null,
+            investmentAnalysis: !skipAI && (comprehensiveData?.quarterlyInsights || comprehensiveData?.annualReportInsights || comprehensiveData?.earningsCallInsights) ? {
+    recommendation: generateInvestmentRecommendation(
+        currentPrice,
+        predictions,
+        fundamentals,
+        comprehensiveData.quarterlyInsights,
+        comprehensiveData.annualReportInsights,
+        comprehensiveData.earningsCallInsights
+    ),
+    dataQuality: {
+        hasQuarterly: !!comprehensiveData.quarterlyInsights,
+        hasAnnual: !!comprehensiveData.annualReportInsights,
+        hasEarnings: !!comprehensiveData.earningsCallInsights,
+        hasFundamentals: !!fundamentals,
+        analysisTimestamp: new Date().toISOString()
+    }
+} : null,
             metadata: {
                 exchange: symbol.includes('.NS') ? 'NSE' : symbol.includes('.BO') ? 'BSE' : meta.exchangeName || 'Unknown',
                 previousClose: previousClose,
@@ -3102,37 +3182,453 @@ function getDefaultPredictions(currentPrice: number) {
 }
 
 // ========================
+// HELPER: GENERATE COMPREHENSIVE INVESTMENT RECOMMENDATION
+// ========================
+function generateInvestmentRecommendation(
+    currentPrice: number,
+    predictions: any,
+    fundamentals: any,
+    quarterlyInsights: any,
+    annualReportInsights: any,
+    earningsCallInsights: any
+) {
+    const analysis = {
+        overallSignal: 'HOLD' as 'STRONG_BUY' | 'BUY' | 'HOLD' | 'SELL' | 'STRONG_SELL',
+        confidence: 'Medium' as 'High' | 'Medium' | 'Low',
+        targetPrice: {
+            conservative: currentPrice,
+            expected: currentPrice,
+            optimistic: currentPrice
+        },
+        timeHorizon: '12-18 months',
+        investmentThesis: {
+            bullCase: [] as string[],
+            bearCase: [] as string[],
+            keyRisks: [] as string[]
+        },
+        scores: {
+            fundamental: 0,
+            growth: 0,
+            valuation: 0,
+            management: 0,
+            overall: 0
+        },
+        breakdown: {
+            quarterlyHealth: 'Unknown' as 'Strong' | 'Good' | 'Fair' | 'Weak',
+            annualHealth: 'Unknown' as 'Strong' | 'Good' | 'Fair' | 'Weak',
+            earningsHealth: 'Unknown' as 'Bullish' | 'Neutral' | 'Bearish'
+        }
+    };
+
+    let totalScore = 0;
+    let scoreCount = 0;
+
+    // ============================================
+    // 1. QUARTERLY ANALYSIS (Weight: 30%)
+    // ============================================
+    if (quarterlyInsights) {
+        const quarterly = quarterlyInsights;
+        let quarterlyScore = 50; // Neutral baseline
+
+        // Revenue growth check
+        if (quarterly.keyMetrics?.revenue) {
+            const yoyGrowth = parseFloat(quarterly.keyMetrics.revenue.yoyGrowth) || 0;
+            if (yoyGrowth > 20) {
+                quarterlyScore += 15;
+                analysis.investmentThesis.bullCase.push(
+                    `Strong revenue growth: ${yoyGrowth.toFixed(1)}% YoY (Q: ${quarterly.quarter})`
+                );
+            } else if (yoyGrowth > 10) {
+                quarterlyScore += 10;
+            } else if (yoyGrowth < 0) {
+                quarterlyScore -= 15;
+                analysis.investmentThesis.bearCase.push(
+                    `Declining revenue: ${yoyGrowth.toFixed(1)}% YoY`
+                );
+            }
+        }
+
+        // Profitability check
+        if (quarterly.keyMetrics?.netProfit) {
+            const profitGrowth = parseFloat(quarterly.keyMetrics.netProfit.yoyGrowth) || 0;
+            if (profitGrowth > 25) {
+                quarterlyScore += 15;
+                analysis.investmentThesis.bullCase.push(
+                    `Excellent profit growth: ${profitGrowth.toFixed(1)}% YoY`
+                );
+            } else if (profitGrowth < -10) {
+                quarterlyScore -= 15;
+                analysis.investmentThesis.keyRisks.push(
+                    `Profit declining: ${profitGrowth.toFixed(1)}% YoY`
+                );
+            }
+        }
+
+        // Margin expansion check
+        if (quarterly.financialRatios) {
+            const opm = parseFloat(quarterly.financialRatios.operatingMargin) || 0;
+            if (opm > 20) {
+                quarterlyScore += 10;
+                analysis.investmentThesis.bullCase.push(
+                    `Strong operating margin: ${opm.toFixed(1)}%`
+                );
+            } else if (opm < 5) {
+                quarterlyScore -= 10;
+            }
+        }
+
+        // Outlook sentiment
+        if (quarterly.outlook?.sentiment === 'Positive') {
+            quarterlyScore += 10;
+        } else if (quarterly.outlook?.sentiment === 'Negative') {
+            quarterlyScore -= 10;
+        }
+
+        totalScore += quarterlyScore * 0.3;
+        scoreCount++;
+
+        // Determine quarterly health
+        if (quarterlyScore >= 70) analysis.breakdown.quarterlyHealth = 'Strong';
+        else if (quarterlyScore >= 55) analysis.breakdown.quarterlyHealth = 'Good';
+        else if (quarterlyScore >= 40) analysis.breakdown.quarterlyHealth = 'Fair';
+        else analysis.breakdown.quarterlyHealth = 'Weak';
+    }
+
+    // ============================================
+    // 2. ANNUAL REPORT ANALYSIS (Weight: 30%)
+    // ============================================
+    if (annualReportInsights) {
+        const annual = annualReportInsights;
+        let annualScore = 50; // Neutral baseline
+
+        // Balance sheet strength
+        if (annual.balanceSheet) {
+            const bs = annual.balanceSheet;
+            
+            // Asset growth
+            const totalAssets = safeParseNumber(bs.assets?.totalAssets?.current);
+            const prevAssets = safeParseNumber(bs.assets?.totalAssets?.previous);
+            if (totalAssets > prevAssets && prevAssets > 0) {
+                const assetGrowth = ((totalAssets - prevAssets) / prevAssets) * 100;
+                if (assetGrowth > 15) {
+                    annualScore += 10;
+                    analysis.investmentThesis.bullCase.push(
+                        `Strong asset growth: ${assetGrowth.toFixed(1)}%`
+                    );
+                }
+            }
+
+            // Debt-to-equity check
+            const totalDebt = safeParseNumber(bs.liabilities?.totalLiabilities?.current);
+            const totalEquity = safeParseNumber(bs.equity?.totalEquity?.current);
+            if (totalEquity > 0) {
+                const debtToEquity = totalDebt / totalEquity;
+                if (debtToEquity < 0.5) {
+                    annualScore += 15;
+                    analysis.investmentThesis.bullCase.push(
+                        `Low debt-to-equity ratio: ${debtToEquity.toFixed(2)}x`
+                    );
+                } else if (debtToEquity > 2.0) {
+                    annualScore -= 15;
+                    analysis.investmentThesis.keyRisks.push(
+                        `High debt-to-equity ratio: ${debtToEquity.toFixed(2)}x`
+                    );
+                }
+            }
+
+            // Profitability check
+            const pat = safeParseNumber(bs.profitAndLoss?.profitAfterTax?.current);
+            const revenue = safeParseNumber(bs.profitAndLoss?.revenue?.current);
+            if (revenue > 0) {
+                const netMargin = (pat / revenue) * 100;
+                if (netMargin > 15) {
+                    annualScore += 15;
+                } else if (netMargin < 3) {
+                    annualScore -= 10;
+                }
+            }
+        }
+
+        // Future strategy
+        if (annual.futureStrategy && annual.futureStrategy.length > 100) {
+            annualScore += 10;
+            analysis.investmentThesis.bullCase.push(
+                'Clear growth strategy outlined in annual report'
+            );
+        }
+
+        // Business model clarity
+        if (annual.businessModel && annual.businessModel.length > 100) {
+            annualScore += 5;
+        }
+
+        totalScore += annualScore * 0.3;
+        scoreCount++;
+
+        // Determine annual health
+        if (annualScore >= 70) analysis.breakdown.annualHealth = 'Strong';
+        else if (annualScore >= 55) analysis.breakdown.annualHealth = 'Good';
+        else if (annualScore >= 40) analysis.breakdown.annualHealth = 'Fair';
+        else analysis.breakdown.annualHealth = 'Weak';
+    }
+
+    // ============================================
+    // 3. EARNINGS CALL ANALYSIS (Weight: 20%)
+    // ============================================
+    if (earningsCallInsights) {
+        const earnings = earningsCallInsights;
+        
+        // Sentiment check
+        if (earnings.sentiment === 'Bullish') {
+            totalScore += 20 * 0.2;
+            analysis.breakdown.earningsHealth = 'Bullish';
+            analysis.investmentThesis.bullCase.push(
+                'Bullish management tone in earnings call'
+            );
+        } else if (earnings.sentiment === 'Bearish') {
+            totalScore += 30 * 0.2;
+            analysis.breakdown.earningsHealth = 'Bearish';
+            analysis.investmentThesis.keyRisks.push(
+                'Bearish management outlook'
+            );
+        } else {
+            totalScore += 50 * 0.2;
+            analysis.breakdown.earningsHealth = 'Neutral';
+        }
+
+        // Investment thesis from call
+        if (earnings.investmentThesis) {
+            const thesis = earnings.investmentThesis;
+            
+            // Extract bull points
+            if (thesis.bullCase && thesis.bullCase.length > 0) {
+                thesis.bullCase.slice(0, 2).forEach((point: string) => {
+                    analysis.investmentThesis.bullCase.push(point);
+                });
+            }
+
+            // Extract bear points
+            if (thesis.bearCase && thesis.bearCase.length > 0) {
+                thesis.bearCase.slice(0, 2).forEach((point: string) => {
+                    analysis.investmentThesis.bearCase.push(point);
+                });
+            }
+
+            // Recommendation signal
+            if (thesis.recommendation?.signal === 'BUY') {
+                totalScore += 10 * 0.2;
+            } else if (thesis.recommendation?.signal === 'SELL') {
+                totalScore -= 10 * 0.2;
+            }
+        }
+
+        scoreCount++;
+    }
+
+    // ============================================
+    // 4. FUNDAMENTALS ANALYSIS (Weight: 20%)
+    // ============================================
+    let fundamentalScore = 50;
+
+    // PE Ratio check
+    if (fundamentals.peRatio) {
+        if (fundamentals.peRatio < 15) {
+            fundamentalScore += 15;
+            analysis.investmentThesis.bullCase.push(
+                `Attractive valuation: PE ${fundamentals.peRatio.toFixed(1)}x`
+            );
+        } else if (fundamentals.peRatio > 40) {
+            fundamentalScore -= 15;
+            analysis.investmentThesis.keyRisks.push(
+                `Expensive valuation: PE ${fundamentals.peRatio.toFixed(1)}x`
+            );
+        }
+    }
+
+    // ROE check
+    if (fundamentals.roe) {
+        const roePercent = fundamentals.roe * 100;
+        if (roePercent > 20) {
+            fundamentalScore += 15;
+            analysis.investmentThesis.bullCase.push(
+                `Excellent ROE: ${roePercent.toFixed(1)}%`
+            );
+        } else if (roePercent < 10) {
+            fundamentalScore -= 10;
+        }
+    }
+
+    // Debt-to-equity check
+    if (fundamentals.debtToEquity) {
+        if (fundamentals.debtToEquity < 0.5) {
+            fundamentalScore += 10;
+        } else if (fundamentals.debtToEquity > 2.0) {
+            fundamentalScore -= 15;
+        }
+    }
+
+    // Operating margin check
+    if (fundamentals.operatingMargin) {
+        const margin = fundamentals.operatingMargin * 100;
+        if (margin > 20) {
+            fundamentalScore += 10;
+        } else if (margin < 5) {
+            fundamentalScore -= 10;
+        }
+    }
+
+    totalScore += fundamentalScore * 0.2;
+    scoreCount++;
+
+    // ============================================
+    // 5. CALCULATE OVERALL SCORE & RECOMMENDATION
+    // ============================================
+    const overallScore = scoreCount > 0 ? totalScore / scoreCount : 50;
+    analysis.scores.overall = Math.round(overallScore);
+    analysis.scores.fundamental = Math.round(fundamentalScore);
+    analysis.scores.growth = quarterlyInsights ? Math.round(totalScore * 0.3 / 0.3) : 50;
+    analysis.scores.valuation = Math.round(fundamentalScore * 0.8); // Simplified
+    analysis.scores.management = earningsCallInsights ? Math.round((totalScore * 0.2 / 0.2)) : 50;
+
+    // Determine overall signal
+    if (overallScore >= 75) {
+        analysis.overallSignal = 'STRONG_BUY';
+        analysis.confidence = 'High';
+    } else if (overallScore >= 60) {
+        analysis.overallSignal = 'BUY';
+        analysis.confidence = 'High';
+    } else if (overallScore >= 45) {
+        analysis.overallSignal = 'HOLD';
+        analysis.confidence = 'Medium';
+    } else if (overallScore >= 30) {
+        analysis.overallSignal = 'SELL';
+        analysis.confidence = 'Medium';
+    } else {
+        analysis.overallSignal = 'STRONG_SELL';
+        analysis.confidence = 'High';
+    }
+
+    // Calculate target prices
+    if (predictions.sixMonth) {
+        analysis.targetPrice.conservative = predictions.sixMonth.conservative;
+        analysis.targetPrice.expected = predictions.sixMonth.expected;
+        analysis.targetPrice.optimistic = predictions.sixMonth.optimistic;
+    }
+
+    // Ensure minimum 3 points in each category
+    if (analysis.investmentThesis.bullCase.length === 0) {
+        analysis.investmentThesis.bullCase.push('Requires deeper analysis');
+    }
+    if (analysis.investmentThesis.bearCase.length === 0) {
+        analysis.investmentThesis.bearCase.push('Monitor for emerging risks');
+    }
+    if (analysis.investmentThesis.keyRisks.length === 0) {
+        analysis.investmentThesis.keyRisks.push('Market volatility', 'Sector-specific risks');
+    }
+
+    return analysis;
+}
+
+function safeParseNumber(value: any): number {
+    if (value === null || value === undefined) return 0;
+    if (typeof value === 'number') return value;
+    if (typeof value === 'string') {
+        // Remove commas and parse
+        return parseFloat(value.replace(/,/g, '')) || 0;
+    }
+    return 0;
+}
+
+// ========================
 // MAIN API ROUTE HANDLER
 // ========================
 
 export async function POST(request: NextRequest) {
     try {
-        const { 
-            query, 
-            model, 
-            conversation, 
-            skipAI, 
-            forceRefresh, 
-            forceRefreshQuarterly,
-            forceRefreshEarningsCall
-        } = await request.json();
-        
-        if (!query) {
-            return NextResponse.json({ error: 'Query required' }, { status: 400 });
+        // 1️⃣ REQUEST SIZE CHECK (before reading body)
+        if (!validateRequestSize(request)) {
+            return NextResponse.json(
+                { error: 'Request too large' }, 
+                { status: 413, headers: getSecurityHeaders() }
+            );
         }
 
-        console.log(`🔍 [API] Processing query: "${query}"${skipAI ? ' (skipAI=true)' : ''}${forceRefresh ? ' (forceRefresh=true)' : ''}${forceRefreshQuarterly ? ' (forceRefreshQuarterly=true)' : ''}`);
+        // 2️⃣ PARSE REQUEST BODY (read once, early)
+        const body = await request.json();
+        
+        if (!body || typeof body !== 'object') {
+            return NextResponse.json(
+                { error: 'Invalid request body' },
+                { status: 400, headers: getSecurityHeaders() }
+            );
+        }
 
-        // Extract stock symbol from query
-        const symbolMatch = query.match(/([A-Z0-9]+(?:\.[A-Z]+)?)/i);
+        const { query, model, conversation, skipAI, forceRefresh, forceRefreshQuarterly, forceRefreshEarningsCall } = body;
+        
+        if (!query || typeof query !== 'string') {
+            return NextResponse.json(
+                { error: 'Query required and must be a string' },
+                { status: 400, headers: getSecurityHeaders() }
+            );
+        }
+
+        // 3️⃣ RATE LIMITING (By IP) - Persistent MongoDB Storage
+        const clientIp = getClientIp(request);
+        const rateCheck = await checkRateLimit(clientIp);
+        
+        if (!rateCheck.allowed) {
+            logSecurityEvent('RATE_LIMIT', { ip: clientIp, retryAfter: rateCheck.retryAfter });
+            return NextResponse.json(
+                { error: 'Rate limit exceeded', retryAfter: rateCheck.retryAfter },
+                { status: 429, headers: { ...getSecurityHeaders(), 'Retry-After': rateCheck.retryAfter!.toString() } }
+            );
+        }
+
+        // 4️⃣ API KEY VALIDATION (Optional - controlled by env)
+        if (process.env.REQUIRE_API_KEY === 'true') {
+            const apiKey = request.headers.get('x-api-key');
+            if (!validateApiKey(apiKey)) {
+                logSecurityEvent('AUTH_FAILURE', { ip: clientIp });
+                return NextResponse.json(
+                    { error: 'Invalid API key' },
+                    { status: 401, headers: getSecurityHeaders() }
+                );
+            }
+        }
+
+        // 5️⃣ SANITIZE INPUTS
+        const cleanQuery = sanitizeQuery(query);
+        
+        if (cleanQuery.length === 0) {
+            logSecurityEvent('INVALID_INPUT', { ip: clientIp, query });
+            return NextResponse.json(
+                { error: 'Invalid query format' },
+                { status: 400, headers: getSecurityHeaders() }
+            );
+        }
+
+        console.log(`🔍 [API] Processing query: "${cleanQuery}"${skipAI ? ' (skipAI=true)' : ''}${forceRefresh ? ' (forceRefresh=true)' : ''}${forceRefreshQuarterly ? ' (forceRefreshQuarterly=true)' : ''}`);
+
+        // 6️⃣ EXTRACT & SANITIZE SYMBOL
+        const symbolMatch = cleanQuery.match(/([A-Z0-9]+(?:\.[A-Z]+)?)/i);
         if (!symbolMatch) {
             return NextResponse.json({
                 response: 'Please provide a valid stock symbol',
                 realtimeData: null
-            });
+            }, { headers: getSecurityHeaders() });
         }
 
-        const symbol = symbolMatch[1].toUpperCase();
+        const rawSymbol = symbolMatch[1].toUpperCase();
+        const symbol = sanitizeSymbol(rawSymbol);
+        
+        if (!symbol) {
+            logSecurityEvent('INVALID_INPUT', { ip: clientIp, symbol: rawSymbol });
+            return NextResponse.json(
+                { error: 'Invalid stock symbol format' },
+                { status: 400, headers: getSecurityHeaders() }
+            );
+        }
+
         console.log(`📊 [Symbol] Detected: ${symbol}`);
 
         // Determine if it's an Indian stock
@@ -3142,40 +3638,50 @@ export async function POST(request: NextRequest) {
             // Fetch fundamentals
             let fundamentals;
             if (isIndianStock) {
-                console.log(`🇮🇳 [Indian Stock] Fetching fundamentals for ${symbol}`);
                 fundamentals = await mcpGetIndianFundamentals(symbol, skipAI || false);
             } else {
-                console.log(`🌎 [Global Stock] Fetching fundamentals for ${symbol}`);
                 fundamentals = await mcpGetFundamentals(symbol, skipAI || false);
             }
 
             if (!fundamentals) {
-                throw new Error('Unable to fetch fundamentals data');
+                return NextResponse.json({
+                    response: `Unable to fetch fundamentals for ${symbol}`,
+                    realtimeData: null
+                }, { headers: getSecurityHeaders() });
             }
 
             // Build complete stock data with predictions
-           const stockData = await buildStockData(symbol, fundamentals, skipAI || false, forceRefresh || false);
+            const stockData = await buildStockData(symbol, fundamentals, skipAI || false, forceRefresh || false, forceRefreshQuarterly || false, forceRefreshEarningsCall || false);
 
             console.log(`✅ [Success] Returning stock data for ${symbol}`);
             return NextResponse.json({
                 response: `Stock data for ${symbol}`,
                 realtimeData: stockData
-            });
+            }, { headers: getSecurityHeaders() });
 
         } catch (fetchError: any) {
-            console.error(`❌ [Fetch Error] ${symbol}:`, fetchError.message);
+            console.error(`❌ [Fetch Error] ${symbol}:`, redactSensitiveData(fetchError));
+            
+            const sanitized = sanitizeError(fetchError);
+            
             return NextResponse.json({
-                response: `Unable to fetch data for ${symbol}: ${fetchError.message}`,
+                response: `Unable to fetch data for ${symbol}`,
                 realtimeData: null,
-                error: fetchError.message
-            }, { status: 500 });
+                error: sanitized.code
+            }, { status: 500, headers: getSecurityHeaders() });
         }
 
     } catch (error: any) {
-        console.error('❌ [API Error]:', error);
+        console.error('❌ [API Error]:', redactSensitiveData(error));
+        
+        const sanitized = sanitizeError(error);
+        
         return NextResponse.json(
-            { error: 'Internal server error', message: error.message },
-            { status: 500 }
+            { error: sanitized.code, message: sanitized.message },
+            { status: 500, headers: getSecurityHeaders() }
         );
     }
 }
+    
+
+

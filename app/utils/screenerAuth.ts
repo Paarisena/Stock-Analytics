@@ -29,11 +29,10 @@ export async function loginToScreener(): Promise<string | null> {
         if (!email || !password) {
             console.error('❌ [Screener Auth] Missing credentials in .env file');
             console.log('📝 Add SCREENER_EMAIL and SCREENER_PASSWORD to your .env file');
-            console.log(`🔍 [DEBUG] EMAIL exists: ${!!email}, PASSWORD exists: ${!!password}`);
             return null;
         }
 
-        console.log(`🔐 [Screener Auth] Logging in to screener.in with ${email}...`);
+        console.log(`🔐 [Screener Auth] Attempting login to screener.in...`);
 
         // Step 1: Get CSRF token from login page
         const loginPageResponse = await fetch('https://www.screener.in/login/', {

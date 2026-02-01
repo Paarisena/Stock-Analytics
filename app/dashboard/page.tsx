@@ -1,6 +1,9 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useRouter } from 'next/navigation';
+import { useAuth } from '@/app/context/AuthContext';
+import { Loader2 } from 'lucide-react';
 import Sidebar from'@/app/components/Sidebar';
 import StockCardWrapper from '@/app/components/StockCardWrapper';
 import ComparisonGrid from '@/app/components/ComparisonGrid';
@@ -13,6 +16,8 @@ interface WatchlistStock {
 }
 
 export default function Dashboard() {
+  const { user, loading: authLoading, logout } = useAuth();
+  const router = useRouter();
   const [watchlist, setWatchlist] = useState<WatchlistStock[]>([]);
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'detailed' | 'grid'>('detailed');
@@ -50,6 +55,31 @@ export default function Dashboard() {
       localStorage.setItem('stockWatchlist', JSON.stringify(watchlist));
     }
   }, [watchlist]);
+
+  // Redirect to login if not authenticated (AFTER all hooks)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
+  // Show loading while checking auth (AFTER all hooks)
+  if (authLoading) {
+    return (
+      <div className="flex h-screen bg-black items-center justify-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated (AFTER all hooks)
+  if (!user) {
+    return (
+      <div className="flex h-screen bg-black items-center justify-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
 
   const addToWatchlist = (stock: WatchlistStock) => {
     if (!watchlist.find(s => s.symbol === stock.symbol)) {
@@ -96,7 +126,7 @@ export default function Dashboard() {
             <div>
               <h1 className="text-3xl font-bold text-white">Stock Analysis Dashboard</h1>
               <p className="text-gray-400 text-sm mt-1">
-                AI-Powered Predictions • Real-time Intelligence • Technical Analysis
+                AI-Powered Analytics • Real-time Intelligence • Technical Analysis
               </p>
             </div>
             

@@ -155,6 +155,20 @@ body {
     box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
   }
 
+  /* Shimmer Animation */
+  @keyframes shimmer {
+    0% {
+      transform: translateX(-100%);
+    }
+    100% {
+      transform: translateX(100%);
+    }
+  }
+
+  .animate-shimmer {
+    animation: shimmer 2s infinite;
+  }
+
   kbd {
     font-family: ui-monospace, monospace;
     font-size: 0.875em;

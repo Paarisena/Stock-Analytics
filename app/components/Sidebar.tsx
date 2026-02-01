@@ -1,6 +1,8 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import { useAuth } from '@/app/context/AuthContext';
+import { LogOut, Home } from 'lucide-react';
 
 interface WatchlistStock {
   symbol: string;
@@ -30,6 +32,7 @@ export default function Sidebar({
   onAddStock,
   onRemoveStock,
 }: SidebarProps) {
+  const { user, logout } = useAuth();
   const [searchQuery, setSearchQuery] = useState('');
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
@@ -209,6 +212,43 @@ export default function Sidebar({
             </div>
           ))
         )}
+      </div>
+
+      {/* Footer with User Info and Logout */}
+      <div className="border-t border-white/10 p-4 bg-black/60">
+        <div className="flex items-center gap-3 mb-3">
+          {user?.photoURL && (
+            <img 
+              src={user.photoURL} 
+              alt="Profile" 
+              className="w-10 h-10 rounded-full border-2 border-cyan-500/30"
+            />
+          )}
+          <div className="flex-1 min-w-0">
+            <div className="text-sm font-medium text-white truncate">
+              {user?.displayName || 'User'}
+            </div>
+            <div className="text-xs text-gray-400 truncate">
+              {user?.email}
+            </div>
+          </div>
+        </div>
+        <div className="flex gap-2">
+          <a
+            href="/"
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white text-sm font-medium transition-all border border-gray-700 hover:border-gray-600"
+          >
+            <Home size={16} />
+            Search
+          </a>
+          <button
+            onClick={logout}
+            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-medium transition-all"
+          >
+            <LogOut size={16} />
+            Logout
+          </button>
+        </div>
       </div>
       </div>
     

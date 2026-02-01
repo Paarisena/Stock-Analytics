@@ -1,10 +1,12 @@
 "use client";
 import { Send, Sparkles, Menu, Plus, Loader2 } from "lucide-react";
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useRouter } from "next/navigation";
 import axios from "axios";
 import ReactMarkdown from 'react-markdown';
 import DataVisualizer from './components/DataVisualizer';
 import StockCard from './components/StockCard';
+import { useAuth } from './context/AuthContext';
 
 interface Message {
   role: "user" | "assistant";
@@ -28,6 +30,8 @@ interface StockSuggestion {
 }
 
 export default function Home() {
+  const { user, loading: authLoading, logout } = useAuth();
+  const router = useRouter();
   const [query, setQuery] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -316,6 +320,13 @@ export default function Home() {
     }, 300);
   }, [fetchSuggestions]);
 
+  // Redirect to login if not authenticated (placed AFTER all hooks)
+  useEffect(() => {
+    if (!authLoading && !user) {
+      router.push('/login');
+    }
+  }, [user, authLoading, router]);
+
   const fetchResults = async (searchQuery: string) => {
     const userMessage: Message = {
       role: "user",
@@ -426,21 +437,49 @@ export default function Home() {
     setQuery("");
   };
 
+  // Show loading while checking auth (AFTER all hooks)
+  if (authLoading) {
+    return (
+      <div className="flex h-screen bg-black items-center justify-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
+  // Don't render if not authenticated (AFTER all hooks)
+  if (!user) {
+    return (
+      <div className="flex h-screen bg-black items-center justify-center">
+        <Loader2 className="w-8 h-8 text-cyan-400 animate-spin" />
+      </div>
+    );
+  }
+
   return (
     <div className="flex h-screen bg-black text-white overflow-hidden">
       {/* Main Content - Centered */}
       <div className="flex-1 flex flex-col min-w-0">
-        {/* Header with Dashboard Link */}
+        {/* Header with User Profile */}
         <div className="bg-gradient-to-r from-black via-gray-900 to-black border-b border-gray-800 px-6 py-3">
           <div className="max-w-4xl mx-auto flex items-center justify-between">
-            <div className="text-sm text-gray-400">
-              AI Stock Search
+            <div className="flex items-center gap-4">
+              {user.photoURL && (
+                <img 
+                  src={user.photoURL} 
+                  alt="Profile" 
+                  className="w-8 h-8 rounded-full border-2 border-cyan-500/30"
+                />
+              )}
+              <div className="flex flex-col">
+                <span className="text-sm text-gray-400">AI Stock Search</span>
+                <span className="text-sm font-semibold text-white">{user.displayName || user.email}</span>
+              </div>
             </div>
             <a
               href="/dashboard"
               className="flex items-center gap-2 px-4 py-2 bg-gradient-to-r from-blue-600 to-purple-600 hover:from-blue-700 hover:to-purple-700 rounded-lg text-white font-medium transition-all shadow-lg hover:shadow-xl text-sm"
             >
-              📊 Open Dashboard
+              📊 Dashboard
             </a>
           </div>
         </div>

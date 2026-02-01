@@ -840,8 +840,7 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
  * Fetch comprehensive company data (quarterly + annual + concall)
  */
 /**
- * Check if newer data is available on Screener.in
- * Quick metadata fetch - doesn't download full reports
+ * Check if newer data is available on Screener.in without fetching full data
  * Returns latest available quarters and fiscal years
  */
 export async function checkAvailableDataVersions(symbol: string): Promise<{
@@ -875,11 +874,17 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
         const html = await response.text();
         const $ = load(html);
 
-        // 1. Extract latest quarter from table header
+        // 1. Extract latest quarter from table header (RIGHTMOST column = latest)
         const quarterHeaders = $('section:contains("Quarterly Results") table thead th')
             .map((i, el) => $(el).text().trim())
             .get();
-        const latestQuarter = quarterHeaders[1] || null; // First data column
+        
+        // ✅ FIX: Use last column (latest quarter) instead of second column
+        const latestQuarter = quarterHeaders.length > 1 
+            ? quarterHeaders[quarterHeaders.length - 1] 
+            : null;
+
+        console.log(`📅 [Version Check] Found ${quarterHeaders.length} quarters, latest: ${latestQuarter}`);
 
         // 2. Extract latest fiscal year from annual reports section
         let latestFiscalYear: string | null = null;
@@ -895,7 +900,7 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
             }
         });
 
-        // 3. Extract latest concall quarter
+        // 3. Extract latest concall quarter (first "Transcript" link)
         let latestConcallQuarter: string | null = null;
         $('a').each((i, elem) => {
             const linkText = $(elem).text().trim();
