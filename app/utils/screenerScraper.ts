@@ -9,6 +9,7 @@ import { load } from 'cheerio';
 import { getAuthenticatedSession, waitForRateLimit, clearSession } from './screenerAuth';
 import { downloadAndParsePDF } from './pdfParser';
 import { extractTextFromPDF } from './geminiVision';
+import { pdfTextCache } from './cache';
 import { normalizeFiscalYear, getLatestFiscalYear, compareFiscalYears } from './fiscalYearMapper';
 import { waitForBSERequest } from './rateLimiter';
 import * as fs from 'fs';
@@ -576,49 +577,49 @@ export async function fetchAnnualReportFromPDF(
 ): Promise<ScreenerAnnualReport | null> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
-        const normalizedFY = normalizeFiscalYear(requestedFY);
+        let normalizedFY = normalizeFiscalYear(requestedFY);
         
         console.log(`📄 [PDF] Fetching annual report for ${cleanSymbol} ${normalizedFY}${forceRefresh ? ' (force refresh)' : ''}...`);
 
-        // Check PDF text cache first
-        const cacheDir = path.join(process.cwd(), '.cache', 'pdfs');
-        if (!fs.existsSync(cacheDir)) {
-            fs.mkdirSync(cacheDir, { recursive: true });
+        // ✅ Check what's actually available on Screener FIRST
+        console.log(`🔍 [PDF] Checking latest available FY on Screener.in...`);
+        const { latestFiscalYear } = await checkAvailableDataVersions(symbol);
+
+        if (latestFiscalYear) {
+            console.log(`📅 [PDF] Screener has ${latestFiscalYear}, requested ${normalizedFY}`);
+            normalizedFY = latestFiscalYear; // Use what's actually available
+        } else {
+            console.log(`⚠️ [PDF] Could not verify latest FY, using requested ${normalizedFY}`);
         }
 
-        const cacheFile = path.join(cacheDir, `${cleanSymbol}-${normalizedFY}.txt`);
-        
-        if (!forceRefresh && fs.existsSync(cacheFile)) {
-            const stats = fs.statSync(cacheFile);
-            const ageInDays = (Date.now() - stats.mtime.getTime()) / (1000 * 60 * 60 * 24);
+        // NOW check MongoDB with the correct FY
+        if (!forceRefresh) {
+            const { default: connectToDatabase } = await import('../../DB/MongoDB');
+            await connectToDatabase();
+            const { PDFCache } = await import('../../DB/PDFCache');
             
-            if (ageInDays < 90) {
-                const cachedText = fs.readFileSync(cacheFile, 'utf-8');
-                
-                // VALIDATE CACHED CONTENT BEFORE USING IT
-                const startsWithPDF = cachedText.trimStart().startsWith('%PDF');
-                const hasBinaryChars = /[\x00-\x08\x0E-\x1F]/.test(cachedText.substring(0, 1000));
-                const hasReadableText = /\b(the|and|to|of|a|in|is|for|on|with|as|by)\b/i.test(cachedText.substring(0, 2000));
-                
-                if (startsWithPDF || hasBinaryChars || !hasReadableText) {
-    console.warn(`⚠️ [Annual Report Cache] Cached file contains binary data, deleting and refetching...`);
-    fs.unlinkSync(cacheFile);
-    // Continue to fresh extraction below
-} else {
-    console.log(`✅ [Annual Report Cache] Using cached report (${ageInDays.toFixed(0)} days old, ${cachedText.length} chars)`);
-    
+            const cachedPDF = await PDFCache.findOne({ 
+                symbol: cleanSymbol, 
+                fiscalYear: normalizedFY // This will now be FY2025
+            });
+            console.log(`🔍 [DEBUG] Query: { symbol: "${cleanSymbol}", fiscalYear: "${normalizedFY}" }`);
+console.log(`🔍 [DEBUG] Found in MongoDB:`, cachedPDF ? `YES (${cachedPDF.content?.length} chars)` : 'NO');
+            
+            if (cachedPDF && cachedPDF.content?.length >= 30000) {
+    console.log(`✅ [PDF MongoDB] Using cached ${normalizedFY} (${cachedPDF.content.length} chars)`);
     return {
-        fiscalYear: normalizedFY,
-        content: cachedText,
-        url: '', // We don't have URL from cache, but that's OK
-        source: 'Screener.in Direct'
+        fiscalYear: cachedPDF.fiscalYear,
+        content: cachedPDF.content,
+        url: cachedPDF.url || '',
+        source: (cachedPDF.source as 'BSE PDF' | 'BSE PDF (OCR)') || 'BSE PDF'
     };
 }
-            }
         }
 
         // Get PDF links
         const pdfLinks = await fetchAnnualReportPDFLinks(symbol);
+
+        
         
         if (pdfLinks.length === 0) {
             console.warn(`⚠️ [PDF] No PDF links found for ${cleanSymbol}`);
@@ -716,9 +717,25 @@ export async function fetchAnnualReportFromPDF(
                 continue; // Try next PDF
             }
 
-            // Success! Cache and return
-            fs.writeFileSync(cacheFile, extractedText, 'utf-8');
-            console.log(`💾 [PDF Cache] Saved ${extractedText.length} chars to cache`);
+            // Success! Save to MongoDB instead of in-memory cache
+            const { default: connectToDatabase } = await import('../../DB/MongoDB');
+            await connectToDatabase();
+            const { PDFCache } = await import('../../DB/PDFCache');
+            
+            await PDFCache.findOneAndUpdate(
+                { symbol: cleanSymbol, fiscalYear: selectedLink.fiscalYear },
+                {
+                    symbol: cleanSymbol,
+                    fiscalYear: selectedLink.fiscalYear,
+                    content: extractedText,
+                    url: actualPdfUrl,
+                    source: source,
+                    createdAt: new Date()
+                },
+                { upsert: true, new: true }
+            );
+            
+            console.log(`💾 [PDF MongoDB] Saved ${extractedText.length} chars to database (90-day TTL)`);
             console.log(`✅ [PDF] Successfully extracted ${extractedText.length.toLocaleString()} characters from ${selectedLink.fiscalYear}`);
 
             return {
@@ -888,9 +905,15 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
 
         // 2. Extract latest fiscal year from annual reports section
         let latestFiscalYear: string | null = null;
-        $('a[href*="annual"]').each((i, elem) => {
+
+        // Try multiple selectors to find annual report links
+        $('a').each((i, elem) => {
             const linkText = $(elem).text();
-            const fyMatch = linkText.match(/FY\s*'?(\d{2,4})|Financial Year (\d{4})/i);
+            const parentText = $(elem).parent().text();
+            const fullText = linkText + ' ' + parentText;
+            
+            // Match "Financial Year 2025" OR "FY25" OR "FY'25"
+            const fyMatch = fullText.match(/Financial\s+Year\s+(\d{4})|FY\s*'?(\d{2,4})/i);
             if (fyMatch) {
                 const year = fyMatch[1] || fyMatch[2];
                 const normalizedFY = year.length === 2 ? `FY20${year}` : `FY${year}`;
@@ -899,6 +922,8 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
                 }
             }
         });
+
+        console.log(`📅 [Version Check] Extracted fiscal year: ${latestFiscalYear}`);
 
         // 3. Extract latest concall quarter (first "Transcript" link)
         let latestConcallQuarter: string | null = null;

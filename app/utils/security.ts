@@ -191,7 +191,7 @@ export function sanitizeSymbol(symbol: string): string | null {
     }
     
     // Length check (1-10 chars)
-    if (normalized.length < 1 || normalized.length > 10) {
+    if (normalized.length < 1 || normalized.length > 20) {
         return null;
     }
     

@@ -96,3 +96,5 @@ export class CacheManager<T> {
         return `${ageDays} days`;
     }
 }
+
+export const pdfTextCache = new CacheManager<string>('PDF Text');
