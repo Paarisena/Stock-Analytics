@@ -233,24 +233,15 @@ export default function Sidebar({
             </div>
           </div>
         </div>
-        <div className="flex gap-2">
-          <a
-            href="/"
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-gray-800 hover:bg-gray-700 rounded-lg text-white text-sm font-medium transition-all border border-gray-700 hover:border-gray-600"
-          >
-            <Home size={16} />
-            Search
-          </a>
-          <button
-            onClick={logout}
-            className="flex-1 flex items-center justify-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-medium transition-all"
-          >
-            <LogOut size={16} />
-            Logout
-          </button>
-        </div>
+        <button
+          onClick={logout}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-red-600 hover:bg-red-700 rounded-lg text-white text-sm font-medium transition-all shadow-lg hover:shadow-xl"
+        >
+          <LogOut size={18} />
+          Logout
+        </button>
       </div>
-      </div>
+    </div>
     
   );
 }

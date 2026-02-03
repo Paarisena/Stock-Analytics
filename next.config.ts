@@ -1,7 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  reactStrictMode: false,
+  images: {
+    unoptimized: true, // Required for static export
+  },
+  trailingSlash: true, // Helps with file routing
 };
 
 export default nextConfig;

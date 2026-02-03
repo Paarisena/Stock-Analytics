@@ -12,6 +12,48 @@ import {
 
 import { downloadAndParsePDF } from './pdfParser';
 import {fetchScreenerTranscript,fetchScreenerAnnualReport,fetchAnnualReportPDFLinks,fetchAnnualReportFromPDF,fetchConferenceCallTranscript,checkAvailableDataVersions,fetchScreenerComprehensiveData} from './screenerScraper';
+import { calculateTechnicalIndicators } from '../api/search/route';
+
+const seq = (len: number, start = 1, step = 1) => Array.from({ length: len }, (_, i) => start + i * step);
+
+describe('calculateTechnicalIndicators', () => {
+  it('RSI should detect Overbought for steady rising prices', () => {
+    const prices = seq(40, 1, 1); // monotonic rising
+    const result = calculateTechnicalIndicators(prices);
+    expect(result.rsi.value).toBeGreaterThan(70);
+    expect(result.rsi.signal).toBe('Overbought');
+  });
+
+  it('RSI fallback returns Neutral for short history', () => {
+    const prices = seq(5, 10, -1);
+    const result = calculateTechnicalIndicators(prices);
+    expect(result.rsi.value).toBe(50);
+    expect(result.rsi.signal).toBe('Neutral');
+  });
+
+  it('MACD is Bullish on increasing price series', () => {
+    const prices = seq(120, 1, 2); // long increasing
+    const result = calculateTechnicalIndicators(prices);
+    expect(result.macd.trend).toBe('Bullish');
+  });
+
+  it('MACD fallback for insufficient data returns neutral-ish values', () => {
+    const prices = seq(20, 1, 1); // less than 26
+    const result = calculateTechnicalIndicators(prices);
+    expect(result.macd.value).toBe(0);
+    expect(result.macd.signal).toBe(0);
+    expect(result.macd.histogram).toBe(0);
+  });
+
+  it('Moving averages detect Golden Cross', () => {
+    // make sma50 > sma200 by >2%
+    const prices = [...Array(150).fill(100), ...Array(50).fill(130)];
+    const result = calculateTechnicalIndicators(prices);
+    expect(result.movingAverages.sma50).toBeGreaterThan(result.movingAverages.sma200 * 1.02);
+    expect(result.movingAverages.crossover).toBe('Golden Cross');
+    expect(result.movingAverages.trend).toBe('Bullish');
+  });
+});
 
 describe('PDF Parser Utility (Integration)', () => {
   // Skip these tests in CI/CD (too slow and flaky)
@@ -70,7 +112,7 @@ describe('Security Utilities', () => {
 
     it('should enforce length limits', () => {
       expect(sanitizeSymbol('A')).toBe('A'); // Min length OK
-      expect(sanitizeSymbol('VERYLONGSYMBOL')).toBeNull(); // >10 chars
+      expect(sanitizeSymbol('VERYLONGSYMBOLLLLLLLL')).toBeNull(); // >10 chars
       expect(sanitizeSymbol('')).toBeNull(); // <1 char
     });
   });

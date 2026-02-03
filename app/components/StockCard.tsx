@@ -7,6 +7,7 @@ import ComprehensiveReportCard from './ComprehensiveReportCard';
 import { callGeminiAPI } from '../utils/aiProviders';
 import AnnualReportAccordion from './AnnualReportAccordion';
 import TranscriptPDFViewer from './TranscriptPDFViewer';
+import LivePriceDisplay from './stock/LivePrice/LivePriceDisplay';
 
 // Helper function to safely render balance sheet values
 const renderValue = (value: any, fallback?: any): string | number => {
@@ -241,22 +242,12 @@ interface StockData {
 
 export default function StockCard({ data }: { data: StockData }) {
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<'RSI' | 'MACD' | 'MA'>('RSI');
-  const [livePrice, setLivePrice] = useState(data.current.price);
-  const [priceChange, setPriceChange] = useState(0);
-  const [isPriceIncreasing, setIsPriceIncreasing] = useState(true);
-  const [lastUpdate, setLastUpdate] = useState(new Date());
   const [isLive, setIsLive] = useState(true);
-  const [volume, setVolume] = useState(0);
-  const [dayHigh, setDayHigh] = useState(data.current.price);
-  const [dayLow, setDayLow] = useState(data.current.price);
-  const [liveChartData, setLiveChartData] = useState(data.chartData);
   
   // Prediction tracking state
   const [currentPrediction, setCurrentPrediction] = useState(data);
   const [previousPrediction, setPreviousPrediction] = useState<StockData | null>(null);
   const [predictionAge, setPredictionAge] = useState(0);
-  const [bulletinMessages, setBulletinMessages] = useState<Array<{time: string, message: string, type: string}>>([]);
-  const previousPriceRef = useRef(data.current.price);
   
   // Deep analysis state
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -272,52 +263,6 @@ export default function StockCard({ data }: { data: StockData }) {
     return null;
   }
   
-  // 💰 LIVE PRICE: Direct Yahoo Finance API (100% FREE, no Perplexity)
-  // Uses dedicated /api/live-price endpoint - most efficient approach
-  useEffect(() => {
-    if (!isLive) return;
-    
-    const fetchLivePrice = async () => {
-      try {
-        // Direct Yahoo Finance endpoint - fastest and FREE
-        const response = await fetch(`/api/live-price?symbol=${encodeURIComponent(data.symbol)}`);
-        const apiData = await response.json();
-        
-        if (apiData.price) {
-          const newPrice = apiData.price;
-          
-          // Track price direction
-          setIsPriceIncreasing(newPrice > previousPriceRef.current);
-          setPriceChange(newPrice - data.current.price);
-          previousPriceRef.current = livePrice;
-          
-          setLivePrice(newPrice);
-          setLastUpdate(new Date(apiData.timestamp));
-          
-          // Update day high/low from API
-          setDayHigh(apiData.dayHigh || newPrice);
-          setDayLow(apiData.dayLow || newPrice);
-          
-          // Update volume from API
-          setVolume(apiData.volume || 0);
-          
-          console.log(`💰 [Live Price] ${data.symbol}: ${newPrice} (FREE Yahoo direct)`);
-        }
-      } catch (error) {
-        console.error('❌ [Live Price] Failed:', error);
-      }
-    };
-    
-    // Fetch immediately
-    fetchLivePrice();
-    
-    // Then fetch every 3 seconds for active traders
-    // 100% FREE - direct Yahoo Finance, no MCP wrapper, no Perplexity
-    const interval = setInterval(fetchLivePrice, 3000);
-    
-    return () => clearInterval(interval);
-  }, [isLive, data.symbol, data.current.price, livePrice]);
-
   // 💰 COST OPTIMIZATION: Removed duplicate auto-refresh intervals
   // StockCardWrapper already handles auto-refresh every 15 minutes with skipAI=true
   // Manual "Refresh AI Analysis" button available for on-demand full refresh
@@ -332,16 +277,7 @@ export default function StockCard({ data }: { data: StockData }) {
     return () => {
       clearInterval(ageInterval);
     };
-  }, [data, livePrice]);
-  
-  // Initial volume from data
-  useEffect(() => {
-    setVolume(Math.floor(Math.random() * 1000000));
-    setDayHigh(data.current.price);
-    setDayLow(data.current.price);
-  }, [data.current.price]);
-  
-
+  }, [data]);
   
   const isPositive = data.current.change >= 0;
   const isShortTermPredictionPositive = data.shortTermPrediction.change >= 0;
@@ -470,8 +406,8 @@ export default function StockCard({ data }: { data: StockData }) {
     }
   };
 
-  // Process chart data - use live data
-  const chartData = liveChartData.map(point => ({
+  // Process chart data
+  const chartData = data.chartData.map(point => ({
     time: point.time,
     price: point.current || point.predicted || 0,
     type: point.type,
@@ -546,16 +482,18 @@ export default function StockCard({ data }: { data: StockData }) {
           <div className="flex-1 w-full sm:w-auto">
             <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 text-xs text-gray-300">
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-cyan-400">Volume:</span> 
-                <span className="text-white">{volume.toLocaleString()}</span>
+                <span className="font-semibold text-cyan-400">Price:</span> 
+                <span className="text-white">{currencySymbol}{formatPrice(data.current.price, currency)}</span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-cyan-400">High:</span> 
-                <span className="text-green-400">{currencySymbol}{dayHigh.toFixed(2)}</span>
+                <span className="font-semibold text-cyan-400">Change:</span> 
+                <span className={data.current.change >= 0 ? 'text-green-400' : 'text-red-400'}>
+                  {data.current.change >= 0 ? '+' : ''}{currencySymbol}{Math.abs(data.current.change).toFixed(2)}
+                </span>
               </div>
               <div className="flex items-center gap-1">
-                <span className="font-semibold text-cyan-400">Low:</span> 
-                <span className="text-red-400">{currencySymbol}{dayLow.toFixed(2)}</span>
+                <span className="font-semibold text-cyan-400">Prev Close:</span> 
+                <span className="text-white">{currencySymbol}{formatPrice(data.metadata.previousClose, currency)}</span>
               </div>
               <div className="flex items-center gap-1">
                 <span className="font-semibold text-cyan-400">Market:</span> 
@@ -567,7 +505,7 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
           <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
             <Clock className="w-3 h-3" />
-            <span>{lastUpdate.toLocaleTimeString()}</span>
+            <span>{new Date(data.metadata.timestamp).toLocaleTimeString()}</span>
           </div>
         </div>
       </motion.div>
@@ -582,9 +520,9 @@ export default function StockCard({ data }: { data: StockData }) {
         <div className="flex-1">
           <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
             <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-teal-400 bg-clip-text text-transparent">{data.symbol}</h3>
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-sm ${isPriceIncreasing ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
-              {isPriceIncreasing ? <TrendingUp size={18} className="animate-pulse" /> : <TrendingDown size={18} className="animate-pulse" />}
-              <span className="text-xs sm:text-sm font-semibold">{isPriceIncreasing ? '+' : ''}{((priceChange / previousPriceRef.current) * 100).toFixed(2)}%</span>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-sm ${data.current.change >= 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+              {data.current.change >= 0 ? <TrendingUp size={18} className="animate-pulse" /> : <TrendingDown size={18} className="animate-pulse" />}
+              <span className="text-xs sm:text-sm font-semibold">{data.current.change >= 0 ? '+' : ''}{data.current.changePercent.toFixed(2)}%</span>
             </div>
           </div>
           <p className="text-gray-400 text-sm sm:text-base">{data.metadata.exchange}</p>
@@ -596,143 +534,14 @@ export default function StockCard({ data }: { data: StockData }) {
         </div>
       </motion.div>
 
-      {/* Live Current Price */}
-      <motion.div 
-        className="mb-4 sm:mb-6 relative"
-        initial={{ scale: 0.9, opacity: 0 }}
-        animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.2 }}
-      >
-        <div className={`absolute inset-0 ${isPriceIncreasing ? 'bg-green-500/10' : 'bg-red-500/10'} rounded-2xl backdrop-blur-sm transition-all duration-300`}></div>
-        <div className="relative p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/50 to-slate-800/50 rounded-2xl border ${isPriceIncreasing ? 'border-green-500/20' : 'border-red-500/20'} hover:border-cyan-500/40 transition-all duration-300">
-          <motion.div 
-            className="text-4xl sm:text-5xl lg:text-6xl xl:text-7xl font-bold text-white mb-2 transition-all duration-300 tracking-tight"
-            animate={isPriceIncreasing !== undefined ? "flash" : "initial"}
-            variants={priceFlash}
-            key={livePrice}
-          >
-            {currencySymbol}{livePrice.toFixed(2)}
-          </motion.div>
-          <div className={`text-base sm:text-lg lg:text-xl font-semibold mb-3 ${isPriceIncreasing ? 'text-green-400' : 'text-red-400'}`}>
-            {isPriceIncreasing ? '+' : ''}{currencySymbol}{Math.abs(priceChange).toFixed(4)} {currency}
-          </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3">
-            <div className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs sm:text-sm backdrop-blur-sm border ${data.current.marketState === 'REGULAR' ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-red-500/20 text-red-400 border-red-500/30'}`}>
-              <div className={`w-2 h-2 rounded-full ${data.current.marketState === 'REGULAR' ? 'bg-green-400 animate-pulse' : 'bg-red-400'}`}></div>
-              {data.current.marketState === 'REGULAR' ? 'Market Open' : 'Market Closed'}
-            </div>
-            <div className="flex sm:hidden items-center gap-1 text-xs text-gray-400 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <Clock className="w-3 h-3" />
-              <span>{lastUpdate.toLocaleTimeString()}</span>
-            </div>
-            <div className="flex items-center gap-1 text-xs text-gray-400">
-              <Clock className="w-3 h-3" />
-              <span>Updated {lastUpdate.toLocaleTimeString()}</span>
-            </div>
-            <motion.button
-              onClick={() => setIsLive(!isLive)}
-              className={`px-2 py-1 rounded text-xs font-semibold transition-all ${
-                isLive 
-                  ? 'bg-red-500/20 text-red-400 border border-red-500/40' 
-                  : 'bg-green-500/20 text-green-400 border border-green-500/40'
-              }`}
-              whileHover={{ scale: 1.05 }}
-              whileTap={{ scale: 0.95 }}
-            >
-              {isLive ? '⏸' : '▶'}
-            </motion.button>
-          </div>
-        </div>
-      </motion.div>
-
-      {/* Live Metrics Grid */}
-      <motion.div 
-        className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6"
-        variants={staggerContainer}
-        initial="hidden"
-        animate="visible"
-      >
-        {/* Volume */}
-        <motion.div 
-          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
-          variants={scaleIn}
-          whileHover={{ scale: 1.05, borderColor: 'rgba(168, 85, 247, 0.5)' }}
-        >
-          <div className="flex items-center gap-1 mb-1">
-            <Volume2 className="w-3 h-3 text-purple-400" />
-            <span className="text-xs text-gray-400">Volume</span>
-          </div>
-          <div className="text-xl font-bold text-white">
-            {(volume / 1000).toFixed(1)}K
-          </div>
-        </motion.div>
-
-        {/* Day High */}
-        <motion.div 
-          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
-          variants={scaleIn}
-          whileHover={{ scale: 1.05, borderColor: 'rgba(74, 222, 128, 0.5)' }}
-        >
-          <div className="flex items-center gap-1 mb-1">
-            <TrendingUp className="w-3 h-3 text-green-400" />
-            <span className="text-xs text-gray-400">Day High</span>
-          </div>
-          <div className="text-xl font-bold text-green-400">
-            {currencySymbol}{dayHigh.toFixed(2)}
-          </div>
-        </motion.div>
-
-        {/* Day Low */}
-        <motion.div 
-          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
-          variants={scaleIn}
-          whileHover={{ scale: 1.05, borderColor: 'rgba(248, 113, 113, 0.5)' }}
-        >
-          <div className="flex items-center gap-1 mb-1">
-            <TrendingDown className="w-3 h-3 text-red-400" />
-            <span className="text-xs text-gray-400">Day Low</span>
-          </div>
-          <div className="text-xl font-bold text-red-400">
-            {currencySymbol}{dayLow.toFixed(2)}
-          </div>
-        </motion.div>
-
-        {/* Previous Close */}
-        <motion.div 
-          className="bg-gray-800/60 rounded-xl p-3 border border-gray-700/50"
-          variants={scaleIn}
-          whileHover={{ scale: 1.05, borderColor: 'rgba(209, 213, 219, 0.5)' }}
-        >
-          <div className="flex items-center gap-1 mb-1">
-            <span className="text-xs text-gray-400">Prev Close</span>
-          </div>
-          <div className="text-xl font-bold text-gray-300">
-            {currencySymbol}{data.metadata.previousClose.toFixed(2)}
-          </div>
-        </motion.div>
-      </motion.div>
-
-      {/* Price Range Bar */}
-      <div className="mb-6 bg-gray-800/40 rounded-xl p-4">
-        <div className="flex justify-between text-xs text-gray-400 mb-2">
-          <span>Low {currencySymbol}{dayLow.toFixed(2)}</span>
-          <span className="font-semibold text-white">Current: {currencySymbol}{livePrice.toFixed(2)}</span>
-          <span>High {currencySymbol}{dayHigh.toFixed(2)}</span>
-        </div>
-        <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
-          <div 
-            className="absolute h-full bg-gradient-to-r from-red-500 via-yellow-500 to-green-500 rounded-full"
-            style={{ width: '100%' }}
-          ></div>
-          <div 
-            className="absolute h-4 w-1 bg-white rounded-full -top-1 shadow-lg"
-            style={{ 
-              left: `${((livePrice - dayLow) / (dayHigh - dayLow)) * 100}%`,
-              transition: 'left 0.3s ease'
-            }}
-          ></div>
-        </div>
-      </div>
+      {/* Live Current Price + Metrics - Extracted Component for Performance */}
+      <LivePriceDisplay
+        symbol={data.symbol}
+        initialPrice={data.current.price}
+        currency={currency}
+        previousClose={data.metadata.previousClose}
+        isLive={isLive}
+      />
 
       {/* Price Chart with Prediction */}
       <div className="relative mb-6 sm:mb-8">
@@ -761,7 +570,7 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
         <div className="bg-gray-800/40 rounded-xl p-4 border border-blue-500/20 relative">
-          {liveChartData.length === 0 && (
+          {data.chartData.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-800/60 backdrop-blur-sm rounded-xl z-10">
               <div className="text-center">
                 <div className="text-gray-400 mb-2">📊 Loading chart data...</div>
@@ -770,7 +579,7 @@ export default function StockCard({ data }: { data: StockData }) {
             </div>
           )}
           <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={liveChartData}>
+            <AreaChart data={data.chartData}>
               <defs>
                 <linearGradient id="historicalGradient" x1="0" y1="0" x2="0" y2="1">
                   <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.6}/>
@@ -814,12 +623,12 @@ export default function StockCard({ data }: { data: StockData }) {
                   />
                   
                   <ReferenceLine 
-                  y={livePrice} 
+                  y={data.current.price} 
                   stroke="#f59e0b" 
                   strokeDasharray="5 5"
                   strokeWidth={2}
                   label={{ 
-                    value: `Live: ${currencySymbol}${livePrice.toFixed(2)}`, 
+                    value: `Current: ${currencySymbol}${data.current.price.toFixed(2)}`, 
                     fill: '#f59e0b', 
                     fontSize: 11,
                     fontWeight: 'bold',
@@ -837,7 +646,7 @@ export default function StockCard({ data }: { data: StockData }) {
                 connectNulls
                 dot={(props: any) => {
                   const { cx, cy, index, payload } = props;
-                  const historicalPoints = liveChartData.filter(d => d.type === 'historical');
+                  const historicalPoints = data.chartData.filter(d => d.type === 'historical');
                   const isLatest = index === historicalPoints.length - 1;
                   
                   if (isLatest) {
@@ -955,15 +764,15 @@ export default function StockCard({ data }: { data: StockData }) {
                   const maxLevel = levels[0].level;
                   const minLevel = levels[levels.length - 1].level;
                   const range = maxLevel - minLevel;
-                  const currentPricePercent = ((maxLevel - livePrice) / range) * 100;
+                  const currentPricePercent = ((maxLevel - data.current.price) / range) * 100;
 
                   return (
                     <>
                       {/* Price levels */}
                       {levels.map((item, idx) => {
                         const position = ((maxLevel - item.level) / range) * 100;
-                        const isNearCurrent = Math.abs(livePrice - item.level) / item.level < 0.015; // Within 1.5%
-                        const priceDistance = ((item.level - livePrice) / livePrice * 100).toFixed(2);
+                        const isNearCurrent = Math.abs(data.current.price - item.level) / item.level < 0.015; // Within 1.5%
+                        const priceDistance = ((item.level - data.current.price) / data.current.price * 100).toFixed(2);
                         
                         return (
                           <div 
@@ -995,8 +804,8 @@ export default function StockCard({ data }: { data: StockData }) {
                               <span className="text-xs font-semibold text-white bg-gray-900/80 px-2 py-0.5 rounded">
                                 {currencySymbol}{formatPrice(item.level, currency)}
                               </span>
-                              <span className={`text-xs ${item.level > livePrice ? 'text-red-400' : 'text-green-400'}`}>
-                                {item.level > livePrice ? '+' : ''}{priceDistance}%
+                              <span className={`text-xs ${item.level > data.current.price ? 'text-red-400' : 'text-green-400'}`}>
+                                {item.level > data.current.price ? '+' : ''}{priceDistance}%
                               </span>
                             </div>
                             
@@ -1018,7 +827,7 @@ export default function StockCard({ data }: { data: StockData }) {
                           <div className="relative">
                             <div className="absolute -left-2 -top-2 w-4 h-4 bg-orange-500 rounded-full animate-ping opacity-75"></div>
                             <span className="px-3 py-1 text-sm font-bold text-white bg-orange-500 rounded-lg shadow-lg border-2 border-orange-300 relative z-10">
-                              🎯 LIVE: {currencySymbol}{livePrice.toFixed(2)}
+                              🎯 Current: {currencySymbol}{data.current.price.toFixed(2)}
                             </span>
                           </div>
                           <div className="flex-1 border-t-3 border-orange-500 shadow-lg shadow-orange-500/50"></div>
@@ -1026,12 +835,12 @@ export default function StockCard({ data }: { data: StockData }) {
                       </div>
 
                       {/* Zone indicators */}
-                      {livePrice > currentPrediction.supportResistance.pivot && (
+                      {data.current.price > currentPrediction.supportResistance.pivot && (
                         <div className="absolute top-2 right-2 px-3 py-1 bg-green-900/50 border border-green-500 rounded text-xs text-green-300">
                           📈 Above Pivot (Bullish Zone)
                         </div>
                       )}
-                      {livePrice < currentPrediction.supportResistance.pivot && (
+                      {data.current.price < currentPrediction.supportResistance.pivot && (
                         <div className="absolute top-2 right-2 px-3 py-1 bg-red-900/50 border border-red-500 rounded text-xs text-red-300">
                           📉 Below Pivot (Bearish Zone)
                         </div>
@@ -1063,25 +872,6 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
       )}
-
-      {/* Live Bulletin Feed */}
-      {bulletinMessages.length > 0 && (
-        <div className="mb-6 p-4 bg-gradient-to-br from-indigo-900/30 via-purple-800/20 to-blue-900/20 border border-indigo-500/40 rounded-2xl shadow-lg">
-          <h4 className="text-sm font-bold text-indigo-300 mb-3 flex items-center gap-2">
-            <span className="text-lg">📢</span> Live Forecast Updates
-          </h4>
-          <div className="space-y-2 max-h-40 overflow-y-auto">
-            {bulletinMessages.map((msg, idx) => (
-              <div key={idx} className={`text-xs p-2 rounded border-l-2 ${
-                msg.type === 'UP' ? 'border-green-500 bg-green-900/20' : 'border-red-500 bg-red-900/20'
-              }`}>
-                <span className="text-gray-400">{msg.time}</span> - 
-                <span className={msg.type === 'UP' ? 'text-green-300' : 'text-red-300'}> {msg.message}</span>
-              </div>
-            ))}
-          </div>
-        </div>
-          )}
 
       {/* Short Term Prediction */}
       <motion.div 
@@ -1461,9 +1251,22 @@ export default function StockCard({ data }: { data: StockData }) {
                 </div>
                 <div className="mt-3 text-center">
                   <div className="text-xs text-gray-500 mb-1">Current Reading</div>
-                  <div className="text-3xl font-bold text-indigo-300">
-                    {data.bulletPoints.find(bp => bp.includes('RSI'))?.match(/RSI[^\d]*(\d+\.?\d*)/)?.[1] || 'N/A'}
+                  <div className={`text-3xl font-bold ${
+                    data.technicalIndicators?.rsi?.value 
+                      ? data.technicalIndicators.rsi.value > 70 
+                        ? 'text-red-400' 
+                        : data.technicalIndicators.rsi.value < 30 
+                          ? 'text-green-400' 
+                          : 'text-indigo-300'
+                      : 'text-gray-400'
+                  }`}>
+                    {data.technicalIndicators?.rsi?.value?.toFixed(2) || 'N/A'}
                   </div>
+                  {data.technicalIndicators?.rsi?.signal && (
+                    <div className="text-sm text-gray-400 mt-2">
+                      Signal: <span className="font-semibold text-indigo-300">{data.technicalIndicators.rsi.signal}</span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -1485,12 +1288,36 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="text-red-300 mt-1">Downtrend Expected</div>
                   </div>
                 </div>
-                <div className="text-center">
+                {data.technicalIndicators?.macd && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">MACD Line</span>
+                      <span className="font-bold text-white">
+                        {data.technicalIndicators.macd.value?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">Signal Line</span>
+                      <span className="font-bold text-white">
+                        {data.technicalIndicators.macd.signal?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">Histogram</span>
+                      <span className={`font-bold ${
+                        (data.technicalIndicators.macd.histogram || 0) > 0 ? 'text-green-400' : 'text-red-400'
+                      }`}>
+                        {data.technicalIndicators.macd.histogram?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                  </div>
+                )}
+                <div className="text-center mt-3">
                   <div className="text-xs text-gray-500 mb-1">Current Signal</div>
                   <div className="text-2xl font-bold">
-                    {data.bulletPoints.find(bp => bp.includes('MACD'))?.includes('Bullish') ? (
+                    {data.technicalIndicators?.macd?.trend === 'Bullish' ? (
                       <span className="text-green-400">🟢 Bullish</span>
-                    ) : data.bulletPoints.find(bp => bp.includes('MACD'))?.includes('Bearish') ? (
+                    ) : data.technicalIndicators?.macd?.trend === 'Bearish' ? (
                       <span className="text-red-400">🔴 Bearish</span>
                     ) : (
                       <span className="text-gray-400">N/A</span>
@@ -1517,31 +1344,46 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="text-red-300 mt-1">Strong Sell Signal</div>
                   </div>
                 </div>
-                <div className="space-y-2">
-                  <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
-                    <span className="text-sm text-gray-400">50-Day SMA</span>
-                    <span className="font-bold text-white">
-                      {data.bulletPoints.find(bp => bp.includes('SMA 50'))?.match(/SMA 50.*?(\d+\.?\d*)/)?.[1] || 'N/A'}
-                    </span>
-                  </div>
-                  <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
-                    <span className="text-sm text-gray-400">200-Day SMA</span>
-                    <span className="font-bold text-white">
-                      {data.bulletPoints.find(bp => bp.includes('SMA 200'))?.match(/SMA 200.*?(\d+\.?\d*)/)?.[1] || 'N/A'}
-                    </span>
-                  </div>
-                  <div className="text-center mt-3">
-                    <div className="text-xs text-gray-500 mb-1">Signal Status</div>
-                    <div className="text-lg font-bold">
-                      {data.bulletPoints.find(bp => bp.includes('GOLDEN CROSS')) ? (
-                        <span className="text-yellow-400">🌟 Golden Cross</span>
-                      ) : data.bulletPoints.find(bp => bp.includes('DEATH CROSS')) ? (
-                        <span className="text-red-400">⚠️ Death Cross</span>
-                      ) : (
-                        <span className="text-gray-400">No Cross Signal</span>
-                      )}
+                {data.technicalIndicators?.movingAverages && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">20-Day SMA</span>
+                      <span className="font-bold text-white">
+                        {data.technicalIndicators.movingAverages.sma20?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">50-Day SMA</span>
+                      <span className="font-bold text-white">
+                        {data.technicalIndicators.movingAverages.sma50?.toFixed(2) || 'N/A'}
+                      </span>
+                    </div>
+                    <div className="flex justify-between items-center bg-gray-700/30 rounded p-2">
+                      <span className="text-sm text-gray-400">200-Day SMA</span>
+                      <span className="font-bold text-white">
+                        {data.technicalIndicators.movingAverages.sma200?.toFixed(2) || 'N/A'}
+                      </span>
                     </div>
                   </div>
+                )}
+                <div className="text-center mt-3">
+                  <div className="text-xs text-gray-500 mb-1">Signal Status</div>
+                  <div className="text-lg font-bold">
+                    {data.technicalIndicators?.movingAverages?.crossover === 'Golden Cross' ? (
+                      <span className="text-yellow-400">🌟 Golden Cross</span>
+                    ) : data.technicalIndicators?.movingAverages?.crossover === 'Death Cross' ? (
+                      <span className="text-red-400">⚠️ Death Cross</span>
+                    ) : (
+                      <span className="text-gray-400">No Cross Signal</span>
+                    )}
+                  </div>
+                  {data.technicalIndicators?.movingAverages?.trend && (
+                    <div className="text-sm text-gray-400 mt-2">
+                      Trend: <span className="font-semibold text-indigo-300">
+                        {data.technicalIndicators.movingAverages.trend}
+                      </span>
+                    </div>
+                  )}
                 </div>
               </div>
             )}
@@ -2076,9 +1918,9 @@ export default function StockCard({ data }: { data: StockData }) {
                       {data.annualReport.remuneration.executiveDirectors.map((exec: any, idx: number) => (
                         <tr key={idx} className="border-b border-yellow-500/10">
                           <td className="py-2">{exec.name} <span className="text-xs text-gray-400">({exec.designation})</span></td>
-                          <td className="text-right py-2">{exec.totalRemuneration}</td>
+                          <td className="text-right py-2"> {exec.remuneration?.totalRemuneration || exec.salary || 'N/A'}</td>
                         </tr>
-                      ))}
+                      ))} 
                     </tbody>
                   </table>
                   {data.annualReport.remuneration.summary && (

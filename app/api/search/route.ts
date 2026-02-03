@@ -46,14 +46,43 @@ if (!envValidation.valid) {
     console.error('⚠️ Some features may not work correctly. Please check your .env file.');
 }
 
-// ? GROQ CLIENT (imported from utils/aiProviders.ts)
-// ? PERPLEXITY CLIENT (imported from utils/aiProviders.ts)
-// ? GEMINI CLIENT (imported from utils/aiProviders.ts)
-
-// ? OPENAI CLIENT (Fallback for Groq)
-const openai = new OpenAI({
-  apiKey: process.env.OPENAI_API_KEY || '',
-});
+// ========================
+// MARKET HOURS HELPER
+// ========================
+function getMarketState(meta: any, symbol: string): string {
+    // If Yahoo provides marketState, use it
+    if (meta.marketState && meta.marketState !== 'REGULAR') {
+        return meta.marketState;
+    }
+    
+    // Fallback: Check trading hours based on exchange
+    const now = new Date();
+    const hours = now.getUTCHours();
+    const day = now.getUTCDay(); // 0 = Sunday, 6 = Saturday
+    
+    // Weekend check
+    if (day === 0 || day === 6) {
+        return 'CLOSED';
+    }
+    
+    // Check by exchange (approximate UTC hours)
+    if (symbol.includes('.NS') || symbol.includes('.BO')) {
+        // NSE/BSE: 3:45 AM - 10:00 AM UTC (9:15 AM - 3:30 PM IST)
+        return (hours >= 3 && hours < 10) ? 'REGULAR' : 'CLOSED';
+    } else if (symbol.includes('.T')) {
+        // Tokyo: 12:00 AM - 6:00 AM UTC (9:00 AM - 3:00 PM JST)
+        return (hours >= 0 && hours < 6) ? 'REGULAR' : 'CLOSED';
+    } else if (symbol.includes('.L')) {
+        // London: 8:00 AM - 4:30 PM UTC
+        return (hours >= 8 && hours < 16) ? 'REGULAR' : 'CLOSED';
+    } else if (symbol.includes('.HK')) {
+        // Hong Kong: 1:30 AM - 8:00 AM UTC (9:30 AM - 4:00 PM HKT)
+        return (hours >= 1 && hours < 8) ? 'REGULAR' : 'CLOSED';
+    } else {
+        // US Markets (NASDAQ/NYSE): 2:30 PM - 9:00 PM UTC (9:30 AM - 4:00 PM EST)
+        return (hours >= 14 && hours < 21) ? 'REGULAR' : 'CLOSED';
+    }
+}
 
 // ========================
 // GEMINI JSON MODE HELPER
@@ -1725,7 +1754,7 @@ Provide response in this EXACT JSON format:
   },
   "remuneration": {
   "fiscalYear": "FY 2024-25",
-  "currencyUnit": "Lakhs|Crores",
+  "currencyUnit": "Crores",
   "executiveDirectors":[
    {
       "name": "<Full Name>",
@@ -2766,6 +2795,104 @@ function generateLongTermChart(
 }
 
 // ========================
+// HELPER: CALCULATE TECHNICAL INDICATORS
+// ========================
+export function calculateTechnicalIndicators(historicalPrices: number[]) {
+    // RSI Calculation (14-period)
+    const calculateRSI = (prices: number[], period: number = 14) => {
+        if (prices.length < period + 1) return { value: 50, signal: 'Neutral' };
+        
+        let gains = 0, losses = 0;
+        for (let i = prices.length - period; i < prices.length; i++) {
+            const change = prices[i] - prices[i - 1];
+            if (change > 0) gains += change;
+            else losses += Math.abs(change);
+        }
+        
+        const avgGain = gains / period;
+        const avgLoss = losses / period;
+        const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+        const rsi = 100 - (100 / (1 + rs));
+        
+        let signal = 'Neutral';
+        if (rsi > 70) signal = 'Overbought';
+        else if (rsi < 30) signal = 'Oversold';
+        
+        return { value: rsi, signal };
+    };
+    
+    // MACD Calculation (12, 26, 9)
+    const calculateEMA = (prices: number[], period: number) => {
+        const k = 2 / (period + 1);
+        let ema = prices[0];
+        for (let i = 1; i < prices.length; i++) {
+            ema = prices[i] * k + ema * (1 - k);
+        }
+        return ema;
+    };
+    
+    const calculateMACD = (prices: number[]) => {
+        if (prices.length < 26) return { value: 0, signal: 0, histogram: 0, trend: 'Neutral' };
+        
+        const ema12 = calculateEMA(prices.slice(-26), 12);
+        const ema26 = calculateEMA(prices, 26);
+        const macdLine = ema12 - ema26;
+        
+        // Signal line is 9-period EMA of MACD
+        const macdValues = [];
+        for (let i = prices.length - 9; i < prices.length; i++) {
+            const slice = prices.slice(0, i + 1);
+            const e12 = calculateEMA(slice.slice(-26), 12);
+            const e26 = calculateEMA(slice, 26);
+            macdValues.push(e12 - e26);
+        }
+        const signalLine = calculateEMA(macdValues, 9);
+        const histogram = macdLine - signalLine;
+        const trend = macdLine > signalLine ? 'Bullish' : 'Bearish';
+        
+        return { value: macdLine, signal: signalLine, histogram, trend };
+    };
+    
+    // Moving Averages Calculation
+    const calculateSMA = (prices: number[], period: number) => {
+        if (prices.length < period) return 0;
+        const sum = prices.slice(-period).reduce((a, b) => a + b, 0);
+        return sum / period;
+    };
+    
+    const calculateMovingAverages = (prices: number[]) => {
+        const sma20 = calculateSMA(prices, 20);
+        const sma50 = calculateSMA(prices, 50);
+        const sma200 = calculateSMA(prices, 200);
+        
+        let crossover = 'None';
+        let trend = 'Neutral';
+        
+        if (sma50 > 0 && sma200 > 0) {
+            if (sma50 > sma200 * 1.02) {
+                crossover = 'Golden Cross';
+                trend = 'Bullish';
+            } else if (sma50 < sma200 * 0.98) {
+                crossover = 'Death Cross';
+                trend = 'Bearish';
+            }
+        }
+        
+        const currentPrice = prices[prices.length - 1];
+        if (currentPrice > sma20 && sma20 > sma50) trend = 'Bullish';
+        else if (currentPrice < sma20 && sma20 < sma50) trend = 'Bearish';
+        
+        return { sma20, sma50, sma200, crossover, trend };
+    };
+    
+    return {
+        rsi: calculateRSI(historicalPrices),
+        macd: calculateMACD(historicalPrices),
+        movingAverages: calculateMovingAverages(historicalPrices)
+    };
+}
+
+// ========================
 // HELPER: BUILD COMPLETE STOCK DATA WITH FULL AI ANALYSIS
 // ========================
 
@@ -2801,6 +2928,28 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
         const currency = meta.currency || 'USD';
         
         console.log(`💰 [Price] ${symbol}: ${currentPrice} ${currency} (${changePercent >= 0 ? '+' : ''}${changePercent.toFixed(2)}%)`);
+        
+        // Fetch 200 days of historical data for technical indicators
+        console.log(`📊 [Technical] Fetching historical data for indicators...`);
+        let technicalIndicators = null;
+        try {
+            const historicalResponse = await fetchWithTimeout(
+                `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=200d`,
+                {},
+                5000
+            );
+            const historicalData = await historicalResponse.json();
+            const historicalPrices = historicalData.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter((p: number) => p !== null) || [];
+
+            if (historicalPrices.length >= 14) {
+                technicalIndicators = calculateTechnicalIndicators(historicalPrices);
+                console.log(`✅ [Technical] Calculated RSI: ${technicalIndicators.rsi.value.toFixed(2)}, MACD: ${technicalIndicators.macd.trend}`);
+            } else {
+                console.warn(`⚠️ [Technical] Insufficient data (${historicalPrices.length} days), skipping indicators`);
+            }
+        } catch (techError: any) {
+            console.warn(`⚠️ [Technical] Failed to fetch historical data: ${techError.message}`);
+        }
         
         // 2. For Indian stocks, fetch comprehensive data (quarterly transcripts + annual reports)
         let comprehensiveData = null;
@@ -2983,7 +3132,7 @@ Provide detailed analysis in this EXACT JSON format:
                 change: change,
                 changePercent: changePercent,
                 currency: currency,
-                marketState: meta.marketState || 'REGULAR'
+                marketState: getMarketState(meta, symbol)
             },
             shortTermPrediction: {
                 price: predictions.shortTerm.price,
@@ -3018,6 +3167,7 @@ Provide detailed analysis in this EXACT JSON format:
             },
             tradingSignal: predictions.tradingSignal,
             supportResistance: predictions.supportResistance,
+            technicalIndicators: technicalIndicators,
             chartData: chartData,
             longTermChartData: longTermChartData,
             bulletPoints: predictions.bulletPoints,
