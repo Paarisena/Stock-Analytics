@@ -25,16 +25,16 @@ export async function downloadAndParsePDF(
     cookies?: string,
     useFallback: boolean = false
 ): Promise<PDFParseResult> {
-    console.log(`📥 [PDF Parser] Downloading PDF from ${url.substring(0, 60)}...`);
+    console.log(`📥 [PDF Parser] Downloading PDF from ${url.substring(0, 1200)}...`);
     
     try {
         // Download PDF with timeout
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 60000);
+        const timeoutId = setTimeout(() => controller.abort(), 18000);
         
         const headers: Record<string, string> = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-            'Referer': 'https://www.screener.in/',
+            'Referer': `${process.env.O_URL}`,
             'Accept': 'application/pdf,*/*',
         };
 
@@ -136,8 +136,8 @@ export async function downloadAndParsePDF(
             });
             
             setTimeout(() => {
-                reject(new Error('PDF parsing timeout after 60s'));
-            }, 60000);
+                reject(new Error('PDF parsing timeout after 120s'));
+            }, 120000);
             
             pdfParser.parseBuffer(buffer);
         });
@@ -162,7 +162,7 @@ export async function downloadAndParsePDF(
         
     } catch (error: any) {
         if (error.name === 'AbortError') {
-            throw new Error('PDF download timeout after 60 seconds');
+            throw new Error('PDF download timeout after 120 seconds');
         }
         
         console.error(`❌ [PDF Parser] Error:`, error.message);

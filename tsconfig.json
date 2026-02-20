@@ -43,7 +43,7 @@
     "electron/main.js",
     "out/types/**/*.ts",
     "out/dev/types/**/*.ts"
-  ],
+, "app/utils/remoteConfig.js", "DB/CredentialStore.js", "electron/MongoStore.js"  ],
   "exclude": [
     "node_modules",
     "dist",

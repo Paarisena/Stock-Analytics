@@ -246,86 +246,86 @@ async function mcpGetIndianFundamentals(symbol: string, skipAI: boolean = false)
         };
         
         // ============================================
-        // PHASE 1: TRY SCREENER.IN AUTHENTICATED (BEST - Your Login)
+        // PHASE 1: TRY O.IN AUTHENTICATED (BEST - Your Login)
         // ============================================
-        if (process.env.SCREENER_EMAIL && process.env.SCREENER_PASSWORD) {
-            console.log(`?? [Screener.in] Attempting direct fetch with your account...`);
+        if (process.env.O_EMAIL && process.env.O_PASSWORD) {
+            console.log(`?? [O.in] Attempting direct fetch with your account...`);
             
             try {
-                const { fetchScreenerFundamentals } = await import('../../utils/screenerScraper');
-                const screenerData = await fetchScreenerFundamentals(cleanSymbol);
+                const { fetchOFundamentals } = await import('../../utils/ORec');
+                const OData = await fetchOFundamentals(cleanSymbol);
                 
                 
                 
-                if (screenerData && screenerData.peRatio) {
-                    console.log(`? [Screener.in] Got fundamentals from authenticated account (HIGHEST QUALITY)`);
-                    console.log(`?? [Sample] PE=${screenerData.peRatio}, ROE=${screenerData.roe}, D/E=${screenerData.debtToEquity}, OPM=${screenerData.operatingMargin}`);
+                if (OData && OData.peRatio) {
+                    console.log(`? [O.in] Got fundamentals from authenticated account (HIGHEST QUALITY)`);
+                    console.log(`?? [Sample] PE=${OData.peRatio}, ROE=${OData.roe}, D/E=${OData.debtToEquity}, OPM=${OData.operatingMargin}`);
                     
                     // Convert crores to actual numbers (1 crore = 10 million) - preserve all new fields
                     fundamentals = {
                         symbol: cleanSymbol,
                         // Valuation metrics
-                        marketCap: screenerData.marketCap ? screenerData.marketCap * 10000000 : null,
-                        peRatio: screenerData.peRatio,
-                        pegRatio: screenerData.pegRatio,
-                        priceToBook: screenerData.priceToBook,
-                        dividendYield: screenerData.dividendYield,
-                        bookValue: screenerData.bookValue,
-                        faceValue: screenerData.faceValue,
+                        marketCap: OData.marketCap ? OData.marketCap * 10000000 : null,
+                        peRatio: OData.peRatio,
+                        pegRatio: OData.pegRatio,
+                        priceToBook: OData.priceToBook,
+                        dividendYield: OData.dividendYield,
+                        bookValue: OData.bookValue,
+                        faceValue: OData.faceValue,
                         // Profitability metrics
-                        roe: screenerData.roe,
-                        roa: screenerData.roa,
-                        roce: screenerData.roce,
-                        operatingMargin: screenerData.operatingMargin,
-                        profitMargin: screenerData.profitMargin,
+                        roe: OData.roe,
+                        roa: OData.roa,
+                        roce: OData.roce,
+                        operatingMargin: OData.operatingMargin,
+                        profitMargin: OData.profitMargin,
                         // Financial health
-                        debtToEquity: screenerData.debtToEquity,
-                        totalDebt: screenerData.totalDebt ? screenerData.totalDebt * 10000000 : null,
-                        currentRatio: screenerData.currentRatio,
-                        quickRatio: screenerData.quickRatio,
-                        interestCoverage: screenerData.interestCoverage,
+                        debtToEquity: OData.debtToEquity,
+                        totalDebt: OData.totalDebt ? OData.totalDebt * 10000000 : null,
+                        currentRatio: OData.currentRatio,
+                        quickRatio: OData.quickRatio,
+                        interestCoverage: OData.interestCoverage,
                         // Cash flow
-                        operatingCashFlow: screenerData.operatingCashFlow ? screenerData.operatingCashFlow * 10000000 : null,
-                        freeCashFlow: screenerData.freeCashFlow ? screenerData.freeCashFlow * 10000000 : null,
-                        capex: screenerData.capex ? screenerData.capex * 10000000 : null,
+                        operatingCashFlow: OData.operatingCashFlow ? OData.operatingCashFlow * 10000000 : null,
+                        freeCashFlow: OData.freeCashFlow ? OData.freeCashFlow * 10000000 : null,
+                        capex: OData.capex ? OData.capex * 10000000 : null,
                         // Income statement
-                        revenue: screenerData.revenue ? screenerData.revenue * 10000000 : null,
-                        netProfit: screenerData.netProfit ? screenerData.netProfit * 10000000 : null,
-                        eps: screenerData.eps,
+                        revenue: OData.revenue ? OData.revenue * 10000000 : null,
+                        netProfit: OData.netProfit ? OData.netProfit * 10000000 : null,
+                        eps: OData.eps,
                         // Growth metrics
-                        salesGrowth3Y: screenerData.salesGrowth3Y,
-                        salesGrowth5Y: screenerData.salesGrowth5Y,
-                        profitGrowth3Y: screenerData.profitGrowth3Y,
-                        profitGrowth5Y: screenerData.profitGrowth5Y,
-                        roe3Y: screenerData.roe3Y,
-                        roe5Y: screenerData.roe5Y,
+                        salesGrowth3Y: OData.salesGrowth3Y,
+                        salesGrowth5Y: OData.salesGrowth5Y,
+                        profitGrowth3Y: OData.profitGrowth3Y,
+                        profitGrowth5Y: OData.profitGrowth5Y,
+                        roe3Y: OData.roe3Y,
+                        roe5Y: OData.roe5Y,
                         // Efficiency ratios
-                        debtorDays: screenerData.debtorDays,
-                        cashConversionCycle: screenerData.cashConversionCycle,
-                        workingCapitalDays: screenerData.workingCapitalDays,
+                        debtorDays: OData.debtorDays,
+                        cashConversionCycle: OData.cashConversionCycle,
+                        workingCapitalDays: OData.workingCapitalDays,
                         // Shareholding
-                        promoterHolding: screenerData.promoterHolding,
-                        fiiHolding: screenerData.fiiHolding,
-                        diiHolding: screenerData.diiHolding,
-                        pledgedPercentage: screenerData.pledgedPercentage,
+                        promoterHolding: OData.promoterHolding,
+                        fiiHolding: OData.fiiHolding,
+                        diiHolding: OData.diiHolding,
+                        pledgedPercentage: OData.pledgedPercentage,
                         revenueGrowth: null,
-                        source: 'Screener.in Direct (Authenticated)'
+                        source: 'O.in Direct (Authenticated)'
                     };
                     
-                    console.log(`?? [DEBUG] RAW Screener Data:`, screenerData);
+                    console.log(`?? [DEBUG] RAW O Data:`, OData);
                     console.log(`?? [DEBUG] Converted Fundamentals:`, fundamentals);
                     console.log(`?? [DEBUG] Non-null fields: ${Object.entries(fundamentals).filter(([k,v]) => v !== null).map(([k]) => k).join(', ')}`);
                     return fundamentals;
                 }
-            } catch (screenerError: any) {
-                console.log(`?? [Screener.in] Direct fetch failed: ${screenerError.message}`);
+            } catch (OError: any) {
+                console.log(`?? [O.in] Direct fetch failed: ${OError.message}`);
             }
         } else {
-            console.log(`?? [Screener.in] No credentials found in .env (SCREENER_EMAIL, SCREENER_PASSWORD)`);
+            console.log(`?? [O.in] No credentials found in .env (O_EMAIL, O_PASSWORD)`);
         }
         
         // ============================================
-        // PHASE 2: MONEYCONTROL + SCREENER PUBLIC (Current Method)
+        // PHASE 2: MONEYCONTROL + O PUBLIC (Current Method)
         // ============================================
         console.log(`?? [MoneyControl] Attempting public scraping...`);
         
@@ -356,19 +356,19 @@ async function mcpGetIndianFundamentals(symbol: string, skipAI: boolean = false)
             console.log(`?? [MoneyControl] Scraping failed: ${mcError.message}`);
         }
         
-        // Try Screener.in public (no auth) to supplement
+        // Try O.in public (no auth) to supplement
         try {
-            const screenerUrl = `https://www.screener.in/company/${cleanSymbol}/`;
-            const screenerResponse = await fetch(screenerUrl, {
+            const OUrl = `${process.env.O_URL}company/${cleanSymbol}/`;
+            const OResponse = await fetch(OUrl, {
                 headers: {
                     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36'
                 }
             });
             
-            if (screenerResponse.ok) {
-                const screenerHtml = await screenerResponse.text();
+            if (OResponse.ok) {
+                const OHtml = await OResponse.text();
                 const { load } = await import('cheerio');
-                const $ = load(screenerHtml);
+                const $ = load(OHtml);
                 
                 // Extract from top ratios section
                 $('.top-ratios li').each((i, elem) => {
@@ -386,14 +386,14 @@ async function mcpGetIndianFundamentals(symbol: string, skipAI: boolean = false)
                 });
                 
                 if (fundamentals.marketCap || fundamentals.peRatio) {
-                    console.log(`? [Screener.in Public] Supplemented with additional data`);
+                    console.log(`? [O.in Public] Supplemented with additional data`);
                     fundamentals.source = fundamentals.source === 'MoneyControl Public Scraping' 
-                        ? 'MoneyControl + Screener.in Public' 
-                        : 'Screener.in Public';
+                        ? 'MoneyControl + O.in Public' 
+                        : 'O.in Public';
                 }
             }
-        } catch (screenerError: any) {
-            console.log(`?? [Screener.in Public] Failed: ${screenerError.message}`);
+        } catch (OError: any) {
+            console.log(`?? [O.in Public] Failed: ${OError.message}`);
         }
         
         // ============================================
@@ -555,7 +555,7 @@ async function mcpGetFundamentals(symbol: string, skipAI: boolean = false) {
 }
 
 // ========================
-// HELPER: EXTRACT QUARTERLY INSIGHTS (FOR SCREENER.IN)
+// HELPER: EXTRACT QUARTERLY INSIGHTS (FOR O.IN)
 // ========================
 async function extractQuarterlyInsights(
     cleanSymbol: string,
@@ -974,20 +974,20 @@ async function mcpGetIndianComprehensiveData(
     
     try {
         // ============================================
-        // PHASE 1: PARALLEL CHECK - MongoDB Cache & Screener.in Versions
+        // PHASE 1: PARALLEL CHECK - MongoDB Cache & O.in Versions
         // ============================================
         console.log(`🔍 [Smart Cache] Parallel checking cache & available versions...`);
         
         await connectToDatabase();
         
-        // 🚀 OPTIMIZATION: Check DB cache and Screener versions in parallel
+        // 🚀 OPTIMIZATION: Check DB cache and O.in versions in parallel
         const [availableVersions, cachedReport, cachedQuarterly, cachedEarningsCall] = await Promise.all([
             (async () => {
                 try {
-                    const { checkAvailableDataVersions } = await import('../../utils/screenerScraper');
+                    const { checkAvailableDataVersions } = await import('../../utils/ORec');
                     return await checkAvailableDataVersions(symbol);
                 } catch (error) {
-                    console.warn(`⚠️ [Screener Check] Failed:`, error);
+                    console.warn(`⚠️ [O.in Check] Failed:`, error);
                     return { latestFiscalYear: null, latestQuarter: null, latestConcallQuarter: null };
                 }
             })(),
@@ -1114,36 +1114,36 @@ async function mcpGetIndianComprehensiveData(
         }
         
         // ============================================
-        // PHASE 4: FETCH FRESH DATA FROM SCREENER.IN
+        // PHASE 4: FETCH FRESH DATA FROM O.IN
         // ============================================
         console.log(`🔄 [Hybrid Fetch] Cached items available, fetching new data...`);
         console.log(`   📊 Status: Annual=${annualFromCache ? '✅ Cached' : '🆕 Fetch'}, Quarterly=${quarterlyFromCache ? '✅ Cached' : '🆕 Fetch'}, Earnings=${earningsCallFromCache ? '✅ Cached' : '🆕 Fetch'}`);
         
-        if (!process.env.SCREENER_EMAIL || !process.env.SCREENER_PASSWORD) {
-            throw new Error('Screener.in credentials required');
+        if (!process.env.O_EMAIL || !process.env.O_PASSWORD) {
+            throw new Error('O.in credentials required');
         }
         
-        const { fetchScreenerComprehensiveData } = await import('../../utils/screenerScraper');
-        const screenerData = await fetchScreenerComprehensiveData(symbol);
+        const { fetchOComprehensiveData } = await import('../../utils/ORec');
+        const OData = await fetchOComprehensiveData(symbol);
         
-        console.log('🔍 [DEBUG] Screener data structure:', {
-            hasTranscript: !!screenerData.transcript,
-            hasAnnualReport: !!screenerData.annualReport,
-            hasConcallTranscript: !!screenerData.concallTranscript,
-            concallUrl: screenerData.concallTranscript?.url?.substring(0, 100),
-            concallContentLength: screenerData.concallTranscript?.content?.length,
-            concallQuarter: screenerData.concallTranscript?.quarter
+        console.log('🔍 [DEBUG] O data structure:', {
+            hasTranscript: !!OData.transcript,
+            hasAnnualReport: !!OData.annualReport,
+            hasConcallTranscript: !!OData.concallTranscript,
+            concallUrl: OData.concallTranscript?.url?.substring(0, 100),
+            concallContentLength: OData.concallTranscript?.content?.length,
+            concallQuarter: OData.concallTranscript?.quarter
         });
         
         // ============================================
-        // PHASE 5: PARALLEL AI EXTRACTION FOR NEW DATA
+        // PHASE 5: QUEUE AI EXTRACTION TASKS (FOR SEQUENTIAL PROCESSING)
         // ============================================
         const processingPromises = [];
         
         // Only process quarterly if needed
-        if (needsFreshQuarterly && screenerData.transcript) {
-            console.log(`🔄 [Quarterly] Queuing AI extraction: ${screenerData.transcript.quarter}...`);
-            const transcript = screenerData.transcript; // Capture for closure
+        if (needsFreshQuarterly && OData.transcript) {
+            console.log(`🔄 [Quarterly] Queuing AI extraction: ${OData.transcript.quarter}...`);
+            const transcript = OData.transcript; // Capture for closure
             processingPromises.push(
                 extractQuarterlyInsights(
                     cleanSymbol,
@@ -1160,26 +1160,26 @@ async function mcpGetIndianComprehensiveData(
         }
         
         // Only process earnings call if needed
-        if (needsFreshEarningsCall && screenerData.concallTranscript) {
-            console.log(`🔄 [Earnings Call] Queuing metadata storage: ${screenerData.concallTranscript.quarter}...`);
+        if (needsFreshEarningsCall && OData.concallTranscript) {
+            console.log(`🔄 [Earnings Call] Queuing metadata storage: ${OData.concallTranscript.quarter}...`);
             processingPromises.push(
                 Promise.resolve({
                     type: 'earningsCall' as const,
                     data: {
-                        quarter: screenerData.concallTranscript.quarter,
-                        fiscalYear: screenerData.concallTranscript.fiscalYear,
+                        quarter: OData.concallTranscript.quarter,
+                        fiscalYear: OData.concallTranscript.fiscalYear,
                         callDate: new Date().toISOString().split('T')[0],
-                        pdfUrl: screenerData.concallTranscript.url,
-                        source: 'Screener.in Concalls'
+                        pdfUrl: OData.concallTranscript.url,
+                        source: 'O.in Concalls'
                     }
                 })
             );
         }
         
         // Only process annual report if needed
-        if (needsFreshAnnual && screenerData.annualReport) {
-            console.log(`🔄 [Annual] Queuing AI extraction: FY${screenerData.annualReport.fiscalYear}...`);
-            const annualReportData = screenerData.annualReport; // Capture for closure
+        if (needsFreshAnnual && OData.annualReport) {
+            console.log(`🔄 [Annual] Queuing AI extraction: FY${OData.annualReport.fiscalYear}...`);
+            const annualReportData = OData.annualReport; // Capture for closure
             const annualReport = `FISCAL YEAR: ${annualReportData.fiscalYear}\nSOURCE: ${annualReportData.source}\nURL: ${annualReportData.url}\n\n${annualReportData.content}`;
             
             processingPromises.push(
@@ -1187,1256 +1187,544 @@ async function mcpGetIndianComprehensiveData(
                     console.log(`🔍 [AI Annual] Extracting insights...`);
                     
                     try {
-                        const extractionPrompt = `⚠️⚠️⚠️ CRITICAL: READ AND EXTRACT FROM THE ACTUAL DOCUMENT BELOW ⚠️⚠️⚠️
-Extract from Indian annual report:
-${annualReport.substring(0, 2000000)}
+                        const extractionPrompt = `⚠️ EXTRACT FROM ACTUAL DOCUMENT BELOW - NOT EXAMPLES ⚠️
 
-⚠️ THE DOCUMENT TEXT ABOVE CONTAINS THE REAL DATA YOU MUST EXTRACT
-⚠️ EXAMPLES IN INSTRUCTIONS BELOW ARE ONLY TO SHOW THE PATTERN
-⚠️ DO NOT COPY EXAMPLE NUMBERS - EXTRACT FROM THE ACTUAL DOCUMENT ABOVE
+DOCUMENT:
+${annualReport.substring(0, 10000000)}
 
-CRITICAL INSTRUCTIONS FOR BALANCE SHEET EXTRACTION:
+═══════════════════════════════════════════════════════════════════════════════
+🔢 CRITICAL: MANDATORY UNIT CONVERSION TO CRORES (APPLY TO ALL FINANCIAL VALUES)
+═══════════════════════════════════════════════════════════════════════════════
 
-⚠️⚠️⚠️ UNDERSTANDING OCR TWO-COLUMN TABLE FORMAT ⚠️⚠️⚠️
+**STEP 1: IDENTIFY THE CURRENCY UNIT IN THE DOCUMENT**
+Look for statements like:
+• "All amounts in INR Lakhs" / "Rs. in Lakhs" / "₹ Lakhs"
+• "All amounts in INR Crores" / "Rs. in Crores"
+• "All amounts in INR Millions" / "Rs. Millions"
+• "All amounts in INR Thousands" / "Rs. Thousands"
+• "Figures in '000" / "In thousands"
 
-The balance sheet in the document above has TWO COLUMNS showing current and previous year data.
-OCR converts the table to plain text with this pattern:
+**STEP 2: APPLY THE CONVERSION FORMULA**
 
-HEADER FORMAT: "Particulars Note As at March 31, 2025  2024"
-DATA FORMAT:   "Label [spaces] [Current Year Number] [spaces] [Previous Year Number]"
+┌─────────────────┬──────────────────────────┬─────────────────────────────────┐
+│ SOURCE UNIT     │ CONVERSION TO CRORES     │ EXAMPLE                         │
+├─────────────────┼──────────────────────────┼─────────────────────────────────┤
+│ Lakhs           │ Divide by 100            │ 50,000 Lakhs → 50,000 ÷ 100     │
+│ (INR Lakhs)     │ Value ÷ 100              │              = 500 Crores       │
+├─────────────────┼──────────────────────────┼─────────────────────────────────┤
+│ Millions        │ Divide by 10             │ 5,000 Million → 5,000 ÷ 10      │
+│ (INR Millions)  │ Value ÷ 10               │               = 500 Crores      │
+├─────────────────┼──────────────────────────┼─────────────────────────────────┤
+│ Thousands       │ Divide by 10,000         │ 5,000,000 Thousands             │
+│ (INR '000)      │ Value ÷ 10,000           │ → 5,000,000 ÷ 10,000 = 500 Cr  │
+├─────────────────┼──────────────────────────┼─────────────────────────────────┤
+│ Crores          │ No conversion            │ 500 Crores = 500 Crores         │
+│ (INR Crores)    │ Keep as-is               │                                 │
+├─────────────────┼──────────────────────────┼─────────────────────────────────┤
+│ Billions        │ Multiply by 100          │ 5 Billion → 5 × 100             │
+│ (INR Billions)  │ Value × 100              │           = 500 Crores          │
+└─────────────────┴──────────────────────────┴─────────────────────────────────┘
 
-REAL EXAMPLE FROM INFOSYS BALANCE SHEET (showing the actual OCR format):
---------------------------------------
-"Particulars Note As at March 31, 2025  2024"
-"Total assets    1,24,936   1,14,950"
-"Total equity    87,332   81,176"
-"Total non-current liabilities    5,842   6,688"
-"Total current liabilities    31,762   27,086"
---------------------------------------
+**STEP 3: CONVERSION WORKFLOW EXAMPLES**
 
-HOW TO READ THE TWO COLUMNS:
-1. First number (after label) = CURRENT year (2025) → 1,24,936 means 124936
-2. Second number (after more spaces) = PREVIOUS year (2024) → 1,14,950 means 114950
-3. BOTH numbers are ALWAYS present on the same line
-4. Numbers may have Indian comma format: 1,24,936 → strip to 124936
+EXAMPLE 1: Converting from Lakhs
+Document shows: "Total Assets: 1,25,456.78" and header says "All amounts in INR Lakhs"
 
-EXTRACTION STEPS:
-1. Find line "Total assets    1,24,936   1,14,950"
-   → Extract: { "current": 124936, "previous": 114950 }
-2. Find line "Total equity    87,332   81,176"
-   → Extract: { "current": 87332, "previous": 81176 }
-3. Find line "Total non-current liabilities    5,842   6,688"
-   → Extract: { "current": 5842, "previous": 6688 }
-4. Find line "Total current liabilities    31,762   27,086"
-   → Extract: { "current": 31762, "previous": 27086 }
+1. Extract number: 1,25,456.78 (remove commas → 125456.78)
+2. Identify unit: Lakhs
+3. Apply formula: 125456.78 ÷ 100 = 1254.57
+4. Result in Crores: 1254.57
+5. Store in JSON: "totalAssets": {"current": 1254.57, "previous": ...}
 
-⚠️ CRITICAL: DO NOT SAY "previous year not available" - IT IS THERE IN THE SECOND NUMBER!
-⚠️ Every balance sheet line has TWO numbers (current and previous)
-⚠️ Look for multiple spaces between the two numbers
-⚠️ Extract BOTH numbers for every financial metric
+EXAMPLE 2: Converting from Millions
+Document shows: "Total Revenue: 12,500.50" and header says "Figures in INR Millions"
 
-GO BACK TO THE DOCUMENT TEXT ABOVE AND FIND THESE LINES WITH TWO NUMBERS!
+1. Extract number: 12,500.50 (remove commas → 12500.50)
+2. Identify unit: Millions
+3. Apply formula: 12500.50 ÷ 10 = 1250.05
+4. Result in Crores: 1250.05
+5. Store in JSON: "revenue": {"current": 1250.05, "previous": ...}
 
-STEP-BY-STEP EXTRACTION FROM THE ACTUAL DOCUMENT ABOVE:
-1. Search in the document for line containing "Total assets"
-   - You will find TWO numbers: current year and previous year
-   - Example: "Total assets    1,24,936   1,14,950" → current: 124936, previous: 114950
-2. Search for line containing "Total equity"
-   - Extract BOTH numbers from the line
-   - Example: "Total equity    87,332   81,176" → current: 87332, previous: 81176
-3. Search for line "Total non-current liabilities"
-   - Extract BOTH numbers
-4. Search for line "Total current liabilities"
-   - Extract BOTH numbers
-5. Strip ALL commas from numbers: "1,24,936" → 124936
-6. Pattern on each line: [Label] [multiple spaces] [Current] [multiple spaces] [Previous]
+EXAMPLE 3: Converting from Thousands
+Document shows: "Cash Balance: 50,00,000" and header says "All amounts in INR '000" or "In Thousands"
 
-⚠️ READ THE ACTUAL DOCUMENT TEXT PROVIDED AT THE TOP - FIND LINES WITH TWO NUMBERS!
+1. Extract number: 50,00,000 (remove commas → 50000000)
+2. Identify unit: Thousands
+3. Apply formula: 50000000 ÷ 10000000 = 5
+4. Result in Crores: 5
+5. Store in JSON: "closingCash": {"current": 5, "previous": ...}
 
-CRITICAL EXTRACTION RULES FOR THE ACTUAL DOCUMENT ABOVE:
-1. Look for "as at 31 March, 2025" or "as at March 31, 2025" - this is the ANNUAL balance sheet
-2. DO NOT extract from "Quarter ended" sections (quarterly data has smaller numbers)
-3. PREFER "Consolidated Balance Sheet" or "income statement"
-4. Find "Consolidated Balance Sheet" or "income statement" heading IN THE DOCUMENT
-5. Annual balance sheet has LARGE numbers (5-6 digits in lakhs: 621,532 or crores: 6,215.32)
-6. Extract the unit from table header: "₹ lacs", "₹ Lakhs", "₹ Crore", "₹ Million", "Mn" 
-   ALSO look for: "Indian Rupees Million", "Indian Rupees Lakhs", "(All amounts are in Indian Rupees Million)"
-7. ⚠️⚠️⚠️ MANDATORY CONVERSION - DO NOT SKIP ⚠️⚠️⚠️
-   BEFORE storing ANY number in the JSON, YOU MUST CONVERT TO CRORES:
-   - If already "Lakhs" or "Lacs": keep as is
-   - If already "Million" or "Mn": keep as is
-   - If already in "Crores": keep as is
-   - Store  values in "current" and "previous" fields
+EXAMPLE 4: No conversion needed (already in Crores)
+Document shows: "Total Assets: 1,254.57" and header says "All amounts in INR Crores"
 
+1. Extract number: 1,254.57 (remove commas → 1254.57)
+2. Identify unit: Crores
+3. Apply formula: No conversion (keep as-is)
+4. Result in Crores: 1254.57
+5. Store in JSON: "totalAssets": {"current": 1254.57, "previous": ...}
 
-8. Verify: Total Assets = Total Equity + Total Liabilities
+**STEP 4: WHICH VALUES TO CONVERT**
 
-⚠️ REMINDER: GO BACK TO THE DOCUMENT TEXT AT THE TOP AND EXTRACT FROM THERE!
+✅ CONVERT THESE (all monetary values):
+• Balance Sheet: Assets, Liabilities, Equity, Share Capital, Reserves
+• P&L Statement: Revenue, Expenses, Profit, Loss, Tax
+• Cash Flow: Operating CF, Investing CF, Financing CF, Capex
+• Remuneration: Salary, Commission, Perquisites, Stock compensation
+• Capex, Borrowings, Investments, Dividends
 
-Extract the following from THE ACTUAL DOCUMENT ABOVE:
+❌ DO NOT CONVERT THESE:
+• EPS (Earnings Per Share) - it's a per-share value, keep original
+• P/E Ratio, ROE%, ROCE% - these are ratios/percentages
+• Number of shares, Number of employees - these are counts
+• Percentages (10%, 25%, etc.) - keep as-is
+• Foreign currency amounts (USD, EUR) - convert currency first, then to Crores
 
-1. BUSINESS MODEL (minimum 400 words):
-   - Extract from "Management Discussion and Analysis" or "Directors' Report" section
-   - How does the company generate revenue? What are primary revenue streams?
-   - Business segments and their contribution
-   - Competitive advantages and market position
-   - Key products/services and their monetization
+**STEP 5: SET OUTPUT FIELDS CORRECTLY**
 
-2. FUTURE STRATEGY (minimum 400 words):
-   - Extract from "Future Outlook" or "Strategic Initiatives" section in the document
-   - Strategic initiatives and expansion plans
-   - Capex plans with amounts and timelines
-   - New product launches or market entries
-   - Digital transformation or innovation initiatives
-   - M&A strategy or partnerships
+After conversion, ensure:
+• Set "currency" field to: "INR Crores"
+• Set "currencyUnit" field to: "Crores"
+• All numeric values in JSON are in Crores (already converted)
+• Maintain precision: Use 2 decimal places (e.g., 1254.57 not 1254.5700)
 
-3. ANNUAL BALANCE SHEET EXTRACTION FROM THE DOCUMENT ABOVE (minimum 400 words):
-   
-   ⚠️⚠️⚠️ CRITICAL FIRST STEP: FIND THE CORRECT "Balance Sheet" SECTION ⚠️⚠️⚠️
-   
-   IMPORTANT: The document has MULTIPLE financial tables. You MUST find the RIGHT one!
-   
-   3. ANNUAL BALANCE SHEET EXTRACTION FROM THE DOCUMENT ABOVE (minimum 400 words):
-   
-   ⚠️⚠️⚠️ MANDATORY: ONLY EXTRACT CONSOLIDATED - ABSOLUTELY REJECT STANDALONE ⚠️⚠️⚠️
-   
-   🚫 CRITICAL REJECTION RULES - APPLY BEFORE ANY EXTRACTION:
-   
-   ❌❌❌ IMMEDIATELY REJECT AND SKIP - DO NOT EXTRACT FROM:
-   1. ANY heading containing "Standalone Balance Sheet"
-   2. ANY heading containing "Standalone Financial Statements"
-   3. ANY heading containing "Standalone" anywhere in the title
-   4. Balance sheets typically found in pages 50-150 (Standalone usually appears first)
-   
-   ✅✅✅ ONLY EXTRACT FROM - MANDATORY REQUIREMENT:
-   1. Heading MUST say "Consolidated Balance Sheet" (verify word "Consolidated" is present)
-   2. OR heading says "Consolidated Financial Statements"
-   3. Usually appears AFTER page 150 in annual reports (Consolidated comes second)
-   4. The word "Consolidated" MUST be explicitly visible in the section heading
-   
-   🔍 MANDATORY SEARCH STRATEGY:
-   Step 1: Search the entire document for "Consolidated Balance Sheet" text
-   Step 2: If you encounter "Standalone Balance Sheet" FIRST (it usually appears before Consolidated):
-          → ❌ IGNORE IT COMPLETELY - DO NOT EXTRACT ANYTHING
-          → ⏩ Continue searching below for "Consolidated Balance Sheet"
-          → ❌ DO NOT use Standalone as fallback under any circumstance
-   Step 3: Only when you find heading that says "Consolidated Balance Sheet":
-          → ✅ Verify the exact word "Consolidated" appears in the heading
-          → ✅ Confirm it's NOT "Standalone Balance Sheet"
-          → ✅ Then and only then proceed with extraction
-   
-   WHY CONSOLIDATED IS MANDATORY:
-   - Indian annual reports contain BOTH Standalone AND Consolidated statements
-   - Standalone = Parent company only (excludes subsidiaries - incomplete data)
-   - Consolidated = Parent + ALL subsidiaries (complete group picture)
-   - Investors MUST see Consolidated to understand the FULL business
-   - Extracting Standalone provides misleading/incomplete financial picture
-   - Stock valuations are based on Consolidated numbers, not Standalone
-   
-   ⚠️ FINAL VERIFICATION BEFORE ANY EXTRACTION:
-   Before extracting a single number, YOU MUST confirm:
-   ✅ The section heading contains the exact word "Consolidated"
-   ✅ It is NOT "Standalone Balance Sheet" or "Standalone Financial Statements"
-   ✅ The heading explicitly says "Consolidated Balance Sheet"
-   
-   IF YOU CANNOT FIND "Consolidated Balance Sheet":
-   → ❌ DO NOT extract from Standalone as fallback
-   → ❌ DO NOT guess or calculate
-   → Return error: "Consolidated Balance Sheet section not found in document"
-   → Set all balanceSheet values to null
-   → Continue with other extractions (business model, strategy, etc.)
-   
-   ⚠️⚠️⚠️ NOW SEARCH FOR THE CORRECT "Consolidated Balance Sheet" SECTION ⚠️⚠️⚠️
-   
-   IMPORTANT: The document has MULTIPLE financial tables. You MUST find the RIGHT one!
-   
-   TEXTUAL LANDMARKS TO FIND CORRECT CONSOLIDATED SECTION:
-   
-   1️⃣ SKIP these wrong sections (usually at beginning):
-      ❌ Any "Standalone Balance Sheet" - SKIP IMMEDIATELY
-      ❌ Any table with heading "Financial position" or "Financial Summary"
-      ❌ Tables in "Management Discussion and Analysis" sections  
-      ❌ Tables with heading "Key Highlights" or "Performance Snapshot"
-      ❌ Any table where "Total equity and liabilities" ≠ "Total assets"
-   
-   2️⃣ FIND the "Consolidated Balance Sheet" heading:
-      ✅ MUST have "Consolidated Balance Sheet" or "Consolidated Statement of Financial Position"
-      ✅ Verify word "Consolidated" is visible in the heading (not Standalone)
-      ✅ Search for exact text: "Consolidated Balance Sheet" as a major section heading
-      ✅ Immediately after heading, look for: "(In ₹ crore)" or "(In ₹ Lakhs)" unit indicator
-      ✅ Then look for column header: "Particulars Note As at March 31, 2025  March 31, 2024"
-   
-   3️⃣ VERIFY correct structure BEFORE extracting:
-      ✅ Heading says "Consolidated" (NOT "Standalone")
-      ✅ First major section: "Assets" → "Non-current assets" → "Current assets"
-      ✅ Has detailed line items: "Property, plant and equipment", "Investments", "Trade receivables"
-      ✅ Second major section: "Equity and liabilities" → "Equity" → "Liabilities"
-      ✅ Liabilities split: "Non-current liabilities" AND "Current liabilities" (both must exist!)
-      ✅ Final line: "Total equity and liabilities" = "Total assets" (numbers must match!)
-   
-   BEFORE extracting ANY numbers, verify you found the CORRECT "Balance Sheet" table:
-   
-   ⚠️⚠️⚠️ CRITICAL: FIND THE CORRECT "Balance Sheet" TABLE - NOT SUMMARY TABLES ⚠️⚠️⚠️
-   
-   BEFORE extracting numbers, verify you found the RIGHT table structure:
-   
-   ✅ CORRECT "Balance Sheet" TABLE STRUCTURE:
-   
-   Must have this heading:
-   -------
-   Balance Sheet
-   (In ₹ crore) OR (In ₹ Lakhs) OR (₹ in crores)
-   - "PARTICULARS Note March 31, 2025 March 31, 2024" (BIOCON style)
-   - "Particulars Note As at March 31, 2025  2024" (Infosys style)
+**STEP 6: HANDLE EDGE CASES**
 
-   -------
-   
-   Must have DETAILED breakdown with all three sections:
-   
-   1️⃣ ASSETS SECTION (detailed breakdown):
-      Non-current assets
-        Property, plant and equipment [note] [num] [num]
-        Right-of-use assets [note] [num] [num]
-        Capital work-in-progress [note] [num] [num]
-        Intangible assets [note] [num] [num]
-        [more items...]
-      Total non-current assets    [num]   [num]
-      
-      Current assets
-        Inventories [note] [num] [num]
-        Financial assets [note] [num] [num]
-        Trade receivables [note] [num] [num]
-        Cash and cash equivalents [note] [num] [num]
-        [more items...]
-      Total current assets    [num]   [num]
-      
-   Total assets    1,24,936   1,14,950
-   
-   2️⃣ EQUITY SECTION (detailed breakdown):
-      Equity
-        Equity share capital [note] [num] [num]
-        Other equity [note] [num] [num]
-      Total equity    87,332   81,176
-   
-   3️⃣ LIABILITIES SECTION (detailed breakdown):
-      Liabilities
-        Non-current liabilities
-          Financial liabilities [note] [num] [num]
-          Provisions [note] [num] [num]
-          Deferred tax liabilities [note] [num] [num]
-          [more items...]
-        Total non-current liabilities    5,842   6,688
-        
-        Current liabilities
-          Financial liabilities [note] [num] [num]
-          Trade payables [note] [num] [num]
-          Provisions [note] [num] [num]
-          [more items...]
-        Total current liabilities    31,762   27,086
-   
-   🔍 VALIDATION CHECKLIST (verify ALL before extracting):
-   ✅ Has "Balance Sheet" heading (NOT "Summary" or "Segment information")
-   ✅ Has "(In ₹ crore)" or similar unit indicator below heading
-   ✅ Column header shows: "Particulars  Note As at March 31, 2025  2024"
-   ✅ TWO numbers per line (current year | previous year)
-   ✅ Detailed breakdown: "Total non-current assets" AND "Total current assets" listed separately
-   ✅ Detailed breakdown: "Equity share capital" AND "Other equity" listed separately
-   ✅ Detailed breakdown: "Total non-current liabilities" AND "Total current liabilities" listed separately
-   ✅ Has individual line items (not just totals)
-   
-   🚨 RED FLAGS - SKIP THESE SECTIONS (these are WRONG tables):
-   ❌ Total Equity = Total Assets (this is a SUMMARY TABLE where someone added equity + liabilities = assets incorrectly!)
-      Example WRONG: Total assets 6,52,332 and Total equity 6,52,332 (SAME number = RED FLAG!)
-   ❌ Total Liabilities = 0 (missing data or incomplete section!)
-   ❌ Heading says "Consolidated Financial Statements Summary" or "Segment information"
-   ❌ No detailed breakdown - only shows "Total assets", "Total equity", "Total liabilities" without line items
-   ❌ Only ONE column of numbers (missing previous year comparison)
-   ❌ Numbers in different formats mixed (some with commas, some decimals)
-   
-   📋 DECISION TREE:
-   
-   IF you find a table with Total Equity = Total Assets:
-      → This is WRONG (summary consolidation table)
-      → SKIP this section
-      → SEARCH AGAIN for different "Balance Sheet" section
-   
-   IF you find a table with Total Liabilities = 0:
-      → This is INCOMPLETE or wrong section
-      → SKIP this section
-      → SEARCH AGAIN for proper "Balance Sheet"
-   
-   IF you find a table without detailed asset/liability breakdown:
-      → This is a summary, not detailed Balance Sheet
-      → SKIP this section
-      → SEARCH for section with line-item details
-   
-   IF you find a table with only one year of data:
-      → Cannot do YoY comparison
-      → SKIP this section
-      → SEARCH for two-column format
-   
-   IF after searching you CANNOT find a valid Balance Sheet structure:
-      → DO NOT extract incorrect data
-      → DO NOT calculate or guess
-      → Return error: "Balance Sheet section not found in expected format"
-      → Set all balance sheet values to null
-   
-   ✅ FINAL VALIDATION BEFORE EXTRACTION:
-   After finding a table, verify the balance equation:
-   
-   Total Assets (current) = Total Equity (current) + Total Liabilities (current)
-   Example: 1,24,936 = 87,332 + (5,842 + 31,762) = 1,24,936 ✓
-   
-   IF equation FAILS (difference > 2%):
-      → You extracted from WRONG section
-      → SEARCH AGAIN for correct "Balance Sheet"
-   
-   IF equation PASSES:
-      → Proceed with extraction from THIS table
-      → Extract BOTH current and previous year numbers from each line
-   
-   ✅ NOW EXTRACT FROM THE VALIDATED TABLE:
-   
-   FOR TOTAL ASSETS - Find line containing:
-   • "TOTAL ASSETS" OR "Total Assets" OR "Total assets"
-   • Extract the 2 LARGEST numbers from that line (ignore small note numbers)
-   
-   FOR TOTAL EQUITY - Find line containing:
-   • "Total equity" OR "TOTAL EQUITY" OR "Shareholders' equity"  
-   • Extract the 2 LARGEST numbers from that line
-   
-    FOR TOTAL LIABILITIES - TRY MULTIPLE STRATEGIES:
+• If document has NO unit specified → Assume Lakhs (common default)
+• If document has MIXED units (unlikely) → Convert each section separately
+• If value is "N.A." or "-" → Use null, don't convert
+• If value is negative → Keep negative sign (e.g., -150.25 Crores)
 
-   STRATEGY A (PRIORITY 1): Look for "Total non-current liabilities" + "Total current liabilities"
-   - If BOTH lines exist, SUM THEM:
-     Current Total Liabilities = Non-current current + Current current
-     Previous Total Liabilities = Non-current previous + Current previous
-   - Example: 23,595 + 17,372 = 40,967 (current year)
+═══════════════════════════════════════════════════════════════════════════════
+END OF CONVERSION RULES - NOW PROCEED WITH EXTRACTION
+═══════════════════════════════════════════════════════════════════════════════
+
+EXTRACTION RULES:
+• MANDATORY: Only extract from "Consolidated" statements (REJECT "Standalone" completely)
+• Extract actual numbers from document - strip commas, preserve decimals
+• **APPLY UNIT CONVERSION IMMEDIATELY AFTER EXTRACTION** (see rules above)
+• Use null for unavailable data (never 0 or placeholder values)
+• Two-column format: "Label [spaces] Current [spaces] Previous"
+• Validate: Total Assets = Total Equity + Total Liabilities (±1% tolerance)
+
+SEARCH ORDER:
+1. Find "Consolidated Balance Sheet" (skip any "Standalone" tables)
+2. Find "Consolidated Statement of Profit and Loss" (skip any "Standalone" tables)
+3. Find "Consolidated Statement of Cash Flows" (skip any "Standalone" tables)
+4. Find "Remuneration of Directors" section (usually in Corporate Governance)
+5. Find "Independent Auditor's Report" (for Consolidated Financial Statements only)
+
+BALANCE SHEET VALIDATION (CRITICAL):
+✅ MUST have detailed line items (not summary tables)
+✅ TWO columns: current year | previous year
+✅ Three sections: Assets, Equity, Liabilities
+✅ REJECT if: Total Equity = Total Assets (wrong table selected)
+✅ REJECT if: Total Liabilities = 0 or null (incomplete extraction)
+✅ Verify equation: Assets = Equity + Liabilities (allow ±1% rounding difference)
+
+EXTRACTION TARGETS (ALL VALUES CONVERTED TO CRORES):
+
+1. BUSINESS MODEL (400+ words):
+   Extract from MD&A section - revenue streams, business segments, competitive advantages, market position
+
+2. FUTURE STRATEGY (400+ words):
+   Extract from Future Outlook/Chairman's Message - strategic initiatives, capex plans, expansion targets
+
+3. BALANCE SHEET (Consolidated, Converted to Crores):
+   • Total Assets (current, previous) - from "TOTAL ASSETS" line
+   • Total Equity (current, previous) - from "Total equity" or "Shareholders' Equity" line
+   • Total Liabilities (current, previous) - SUM of "Non-current liabilities" + "Current liabilities"
+   • Non-current assets total (current, previous)
+   • Current assets total (current, previous)
+   • Equity breakdown: Share capital, Other equity/Reserves
+   • Liabilities breakdown: Non-current total, Current total
    
-   STRATEGY B (PRIORITY 2): Look for single "Total liabilities" line
-   - Search patterns: "Total liabilities", "TOTAL LIABILITIES"
-   - DO NOT match "Total equity and liabilities" (that equals Assets!)
-   - Extract BOTH columns directly
+4. PROFIT & LOSS (Consolidated, Converted to Crores, Annual - "Year ended March 31, 2025"):
+   • Revenue/Total Income from operations
+   • Total Expenses
+   • Profit Before Tax (PBT)
+   • Tax Expense
+   • Profit After Tax (PAT)
+   • EPS (Basic) - **DO NOT CONVERT** (it's per-share value, keep original)
+
+5. CASH FLOW (Consolidated, Converted to Crores, Annual):
+   A. Operating Activities:
+      • Profit Before Tax
+      • Cash Generated from Operations (after working capital changes)
+      • Taxes Paid
+      • Net Cash from Operating Activities
    
-   STRATEGY C (FALLBACK): Calculate from Assets - Equity
-   - If liabilities not found: Total Liabilities = Total Assets - Total Equity
-   - Apply to both current and previous year
-
-   VALIDATION CHECKS (MANDATORY):
-   ✅ Total Assets = Total Equity + Total Liabilities (must match!)
-   ✅ If validation fails by >1%, retry extraction with different patterns
-   ✅ Log any mismatches for debugging
+   B. Investing Activities:
+      • Total Capex (Purchase of PPE + Intangible assets)
+      • Investments Purchased
+      • Investments Sold/Matured
+      • Net Cash from Investing Activities
    
-   ⚠️ DO NOT use "Total equity and liabilities" (that equals Assets, not Liabilities only!)
+   C. Financing Activities:
+      • Net Borrowing Change (proceeds - repayments)
+      • Interest Paid
+      • Dividends Paid
+      • Net Cash from Financing Activities
    
-   NUMBER PARSING:
-   • Strip ALL commas: "1,24,936" → 124936
-   • Ignore small numbers (< 1000) - these are note references
+   D. Reconciliation:
+      • Net Cash Change (A + B + C)
+      • Opening Cash & Cash Equivalents
+      • Closing Cash & Cash Equivalents
+      • validationPassed: true/false (verify: Opening + Net Change = Closing)
    
-4. PROFIT & LOSS EXTRACTION FROM THE DOCUMENT ABOVE:
+   E. Derived Metrics:
+      • Free Cash Flow = Operating CF - Capex
+      • Cash Conversion Ratio = Operating CF ÷ PAT × 100
+      • Operating CF to PAT Ratio = Operating CF ÷ PAT
+
+   CASH FLOW QUALITY RATING (analyze and rate):
+   • **Excellent**: Operating CF > PAT, Positive FCF, OCF/PAT > 100%, Low/stable debt
+   • **Good**: Operating CF ≈ PAT (80-120%), Positive/breakeven FCF, Manageable debt growth
+   • **Weak**: Operating CF < PAT, Negative FCF, High working capital drain, Rising debt dependency
+
+6. REMUNERATION (Consolidated, Converted to Crores):
+   Search in: Directors' Report > Corporate Governance > Remuneration of Directors
    
-   Locate P&L Statement in the document:
-   - Search for: "Statement of Profit and Loss" OR "Income Statement"
-   - Look for: "Year ended March 31, 2025" (NOT quarterly)
+   • Executive Directors (MD/CEO/Whole-time):
+     - Name, Designation
+     - Salary, Perquisites, Commission, Stock Options Granted
+     - Total Remuneration (current year, previous year)
    
-   EXTRACT FROM DOCUMENT (try ALL label variations):
+   • Non-Executive Directors (Independent/Non-Executive):
+     - Name, Designation  
+     - Sitting Fees (Board + Committee meetings)
+     - Commission
+     - Total Remuneration
    
-   • REVENUE: "Total Income" OR "revenue from operations" OR "Net sales"
-   • EXPENSES: "Total expenses" OR "Expenses" OR "Operating expenses"
-   • PROFIT BEFORE TAX: "Profit before tax" OR "PBT"
-   • TAX EXPENSE: "Tax expense" OR "Income tax expense"
-   • PROFIT AFTER TAX: "Profit after tax" OR "Profit for the year" OR "Net profit"
-   • EPS: "Earnings per share" OR "EPS" OR "Basic EPS"
+   • KMP (Key Managerial Personnel - CFO, CS):
+     - Name, Designation
+     - Salary, Perquisites, Stock Options
+     - Total Remuneration
    
-   ⚠️ Must be ANNUAL data from "Year ended March 31, 2025" section
-   ⚠️ If Revenue < 100000 and looks quarterly → find the annual section instead
+   • Summary Statistics:
+     - Total paid to Executive Directors
+     - Total paid to Non-Executive Directors
+     - Grand Total remuneration
+     - YoY percentage change
+     - Remuneration as % of PAT
 
-5. KEY RISKS (3-5 major risks):
-   - Extract from "Risk Management" or "Risk Factors" section in the document
-   - Business risks, Financial risks, Regulatory risks, Operational risks
-
-6. KEY OPPORTUNITIES (3-5 opportunities):
-   - Extract from "Opportunities" or "Business Outlook" section in the document
-   - Growth opportunities, Market expansion, New initiatives
-
-5.Extract comprehensive remuneration and compensation details for Directors and Key Managerial Personnel (KMP) from the following annual report text
-
- LOCATE THE SECTIONS:
-   - "Remuneration of Directors" (usually in Board's Report or Corporate Governance section)
-   - "Details of remuneration paid to Managing Director / Whole-time Directors"
-   - "Key Managerial Personnel (KMP) remuneration"
-   - "Sitting fees paid to Non-Executive Directors"
-   - "Commission and other benefits to Directors"
-
- UNDERSTAND THE TABLE STRUCTURE:
-   Tables typically show:
-   - Director/KMP Name and Designation
-   - Salary/Basic pay
-   - Perquisites and allowances
-   - Commission
-   - Stock options granted/exercised
-   - Sitting fees (for Non-Executive Directors)
-   - Total remuneration
-   - May compare FY 2024-25 vs FY 2023-24
-
- DIRECTOR CATEGORIES:
-   A. EXECUTIVE DIRECTORS (Managing Director, Whole-time Directors):
-      - Receive salary, perquisites, commission, bonuses
-      - May have stock options/ESOPs
-      - Full-time employment with the company
+7. AUDIT INFORMATION (Consolidated Financial Statements only):
+   Search for: "Independent Auditor's Report on the Consolidated Financial Statements"
    
-   B. NON-EXECUTIVE DIRECTORS (Including Independent Directors):
-      - Receive sitting fees for board/committee meetings
-      - May receive commission (profit-linked or fixed)
-      - No salary or perquisites
-
- KEY MANAGERIAL PERSONNEL (KMP):
-   - CEO, CFO, Company Secretary, COO
-   - May overlap with Executive Directors
-   - Extract their separate compensation if disclosed
-
-OCR FORMAT NOTES:
-   - Tables may be in columnar format with names in rows
-   - Amounts in LAKHS (₹ in lakhs) or CRORES (₹ in crores) - note the unit!
-   - Format: "Name  Salary  Perquisites  Commission  Stock Options  Total"
-   - Some reports show quarterly/monthly breakdowns
-
-STOCK OPTIONS/ESOPS:
-   - Number of options granted during the year
-   - Number of options exercised
-   - Exercise price per option
-   - Fair value of options (for disclosure)
-
-6. TWO FORMAT OPTIONS:
+   • Auditor Details:
+     - Firm name, Registration number
+     - Partner name, Membership number
+     - Audit report date, Location, UDIN
    
-   FORMAT A - OCR SPACING (legacy):
-   "Property, plant    134141    119778"
-   Pattern: [Label] [multiple spaces] [Current] [multiple spaces] [Previous]
+   • Opinion:
+     - Type: Unqualified/Qualified/Adverse/Disclaimer
+     - Extract exact opinion paragraph
+     - Basis for Opinion paragraph
+     - Is Modified: true/false
    
-   FORMAT B - STRUCTURED TABLE (new):
-   "ASSETS                         Mar-25    Mar-24"
-   "Tangible assets               134,141   119,778"
-   Pattern: Header row with year labels, then data rows with commas
+   • Emphasis of Matter (if present):
+     - Extract full paragraph
+     - Reference note number
+   
+   • Key Audit Matters (KAMs):
+     - Title of each KAM
+     - Why it's classified as KAM
+     - Auditor's response/procedure
+     - Reference notes
+   
+   • Other Matters:
+     - Component auditors involved: Yes/No
+     - Number/% of subsidiaries audited by others
+     - List of unaudited components (if any)
+   
+   • Legal & Regulatory Compliance:
+     - Section 143(3): Book-keeping, internal controls opinion
+     - Rule 11: Litigation, audit trail, fund transfers
+     - Section 197(16): Director remuneration compliance
+   
+   • CARO (Companies Auditor's Report Order):
+     - Search for "Annexure A" or paragraph xxi
+     - Extract holding company summary remarks
+     - List subsidiaries with adverse/qualified CARO remarks
+     - Extract CIN numbers of subsidiaries with issues
+   
+   • Internal Financial Controls:
+     - Search for "Annexure B"
+     - Opinion: Adequate/Inadequate/Modified
+     - Extract material weaknesses (if any)
+   
+   • Audit Concerns Summary:
+     - Overall risk level: Low/Medium/High/Critical
+     - List all red flags (critical issues)
+     - List yellow flags (concerns to watch)
+     - Positive indicators (clean audit points)
+     - Investor implications (200+ words)
 
-   FORMAT DETECTION:
-- MOST REPORTS use FORMAT A: "Label [spaces] Current [spaces] Previous"
-- SOME REPORTS use FORMAT B: Column headers "Mar-25  Mar-24" with aligned data below
-- Extract from whichever format is present in the document
-- Both formats have TWO numbers per line (current and previous year)
+8. RISKS & OPPORTUNITIES:
+   • Extract 3-5 major risks from Risk Management section
+   • Extract 3-5 key opportunities from Business Outlook/Future Prospects
 
+YOY CALCULATIONS (use converted Crores values):
+• change = current - previous
+• changePercent = ((current - previous) ÷ previous) × 100
+• Round to 2 decimal places
 
+SUMMARY REQUIREMENTS:
+• Balance Sheet: 350-450 words covering assets growth, equity changes, liability structure, validation status
+• Cash Flow: 350-450 words covering operating quality, working capital trends, capex intensity, FCF, rating rationale
+• Audit: 200+ words covering opinion type, concerns/red flags, risk assessment for investors
 
-⚠️⚠️⚠️ REMINDER: ALL DATA MUST COME FROM THE ACTUAL DOCUMENT TEXT PROVIDED AT THE TOP! ⚠️⚠️⚠️
-
-Provide response in this EXACT JSON format:
-
+RETURN JSON (exact structure):
 {
-  "companyName": "Extract from document header",
+  "companyName": "string",
   "symbol": "${cleanSymbol}",
-  "fiscalYear": "Extract from annual balance sheet date in document",
+  "fiscalYear": "string from document (e.g., FY 2024-25)",
   "reportType": "Consolidated",
   "currency": "INR Crores",
-  "businessModel": "Detailed 400+ word description extracted from the document...",
-  "futureStrategy": "Detailed 400+ word strategic plans extracted from the document...",
+  "businessModel": "400+ words",
+  "futureStrategy": "400+ words",
   "balanceSheet": {
-    "summary": "IF you successfully found and validated the correct Balance Sheet table AND extracted P&L data: Write ONE comprehensive paragraph (350-450 words) covering: 1) Total Assets growth with YoY % and absolute change, 2) Equity growth with YoY % change, 3) Liabilities breakdown (non-current vs current) with YoY changes, 4) Revenue from operations with YoY growth %, 5) Profit before tax with YoY change, 6) Tax expense with effective tax rate, 7) Profit after tax with YoY change %, 8) EPS with YoY change. Use professional financial analyst tone with ALL ACTUAL NUMBERS from the document. IF validation failed OR you couldn't find the correct detailed Balance Sheet: Write 'Balance Sheet data not available in expected format in the annual report.'",
+    "summary": "350-450 words or 'Balance Sheet data not available'",
     "assets": {
-      "nonCurrent": {
-        "total": { "current": null, "previous": null }  // Extract actual "Total non-current assets" from validated table, OR null if validation failed
-      },
-      "current": {
-        "total": { "current": null, "previous": null }  // Extract actual "Total current assets" from validated table, OR null if validation failed
-      },
-      "totalAssets": { "current": null, "previous": null }  // Extract actual "TOTAL ASSETS" from validated table, OR null if validation failed
+      "nonCurrent": {"total": {"current": null, "previous": null}},
+      "current": {"total": {"current": null, "previous": null}},
+      "totalAssets": {"current": null, "previous": null}
     },
     "equity": {
-      "equityShareCapital": { "current": null, "previous": null },  // Extract actual "Share capital" from validated table, OR null if validation failed
-      "otherEquity": { "current": null, "previous": null },  // Extract actual "Other equity" from validated table, OR null if validation failed
-      "totalEquity": { "current": null, "previous": null }  // Extract actual "Total equity" from validated table, OR null if validation failed
+      "equityShareCapital": {"current": null, "previous": null},
+      "otherEquity": {"current": null, "previous": null},
+      "totalEquity": {"current": null, "previous": null}
     },
     "liabilities": {
-      "nonCurrent": {
-        "total": { "current": null, "previous": null }  // Extract actual "Total non-current liabilities" from validated table, OR null if validation failed
-      },
-      "current": {
-        "total": { "current": null, "previous": null }  // Extract actual "Total current liabilities" from validated table, OR null if validation failed
-      },
-      "totalLiabilities": { "current": null, "previous": null }  // Calculate: non-current + current from validated table, OR null if validation failed
+      "nonCurrent": {"total": {"current": null, "previous": null}},
+      "current": {"total": {"current": null, "previous": null}},
+      "totalLiabilities": {"current": null, "previous": null}
     },
     "profitAndLoss": {
-      "revenue": { "current": null, "previous": null },  // Extract actual ANNUAL "Total Income" from document
-      "totalExpenses": { "current": null, "previous": null },  // Extract actual ANNUAL "Total Expenses" from document
-      "profitBeforeTax": { "current": null, "previous": null },  // Extract actual "Profit before tax" from document
-      "taxExpense": { "current": null, "previous": null },  // Extract actual "Tax expense" from document
-      "profitAfterTax": { "current": null, "previous": null },  // Extract actual "Profit for the year" from document
-      "eps": { "current": null, "previous": null }  // Extract actual "Earnings per share" (annual) from document
+      "revenue": {"current": null, "previous": null},
+      "totalExpenses": {"current": null, "previous": null},
+      "profitBeforeTax": {"current": null, "previous": null},
+      "taxExpense": {"current": null, "previous": null},
+      "profitAfterTax": {"current": null, "previous": null},
+      "eps": {"current": null, "previous": null}
     },
     "yoyComparison": {
-      "totalAssets": { "change": null, "changePercent": null },  // IF balance sheet validated: calculate, ELSE: null
-      "totalEquity": { "change": null, "changePercent": null },  // IF balance sheet validated: calculate, ELSE: null
-      "totalLiabilities": { "change": null, "changePercent": null },  // IF balance sheet validated: calculate, ELSE: null
-      "revenue": { "change": null, "changePercent": null },  // IF balance sheet validated: calculate, ELSE: null
-      "profitAfterTax": { "change": null, "changePercent": null },  // Calculate if P&L data extracted
-      "eps": { "change": null, "changePercent": null }  // Calculate if P&L data extracted
+      "totalAssets": {"change": null, "changePercent": null},
+      "totalEquity": {"change": null, "changePercent": null},
+      "totalLiabilities": {"change": null, "changePercent": null},
+      "revenue": {"change": null, "changePercent": null},
+      "profitAfterTax": {"change": null, "changePercent": null},
+      "eps": {"change": null, "changePercent": null}
     },
-    "analysis": "Provide detailed financial analysis IF you successfully extracted and validated balance sheet data. IF validation failed: state 'Detailed Balance Sheet not available in expected format.'"
+    "analysis": "string"
   },
   "cashFlow": {
-    "summary": "IF you successfully found and validated Consolidated Cash Flow Statement: Write ONE comprehensive paragraph (350-450 words) covering: 1) Operating cash flow with YoY % change and comparison to profit, 2) Major working capital movements (inventory, receivables, payables changes), 3) Investing activities breakdown - Capex amount and YoY change, acquisitions/investments if any, 4) Financing activities - debt raised/repaid, dividends paid, equity raised if any, 5) Free Cash Flow calculation (Operating CF - Capex) with YoY change, 6) Net cash position change and closing cash balance, 7) Cash conversion ratio (Operating CF / Net Profit). IF validation failed: Write 'Cash Flow Statement not available in expected format.'",
-    
-    "operatingActivities": {
-      "profitBeforeTax": { "current": null, "previous": null },  // Extract from section A
-      "operatingProfitBeforeWC": { "current": null, "previous": null },  // After adjustments, before WC changes
-      "cashGeneratedFromOperations": { "current": null, "previous": null },  // After WC changes
-      "taxesPaid": { "current": null, "previous": null },  // Negative number
-      "netCashFromOperating": { "current": null, "previous": null }  // Final line of section A
-    },
-    
-    "workingCapitalChanges": {
-      "inventoryChange": { "current": null, "previous": null },  // Negative = increase
-      "receivablesChange": { "current": null, "previous": null },  // Negative = increase
-      "payablesChange": { "current": null, "previous": null },  // Positive = increase
-      "otherWCChanges": { "current": null, "previous": null }  // Net of other items
-    },
-    
-    "investingActivities": {
-      "capexPPE": { "current": null, "previous": null },  // Negative number
-      "capexIntangibles": { "current": null, "previous": null },  // Negative number
-      "totalCapex": { "current": null, "previous": null },  // Sum of above (negative)
-      "investmentsPurchased": { "current": null, "previous": null },  // Negative
-      "investmentsSold": { "current": null, "previous": null },  // Positive
-      "interestReceived": { "current": null, "previous": null },
-      "dividendReceived": { "current": null, "previous": null },
-      "netCashFromInvesting": { "current": null, "previous": null }  // Final line of section B (usually negative)
-    },
-    
-    "financingActivities": {
-      "borrowingsProceeds": { "current": null, "previous": null },  // Positive inflow
-      "borrowingsRepayment": { "current": null, "previous": null },  // Negative outflow
-      "netBorrowingChange": { "current": null, "previous": null },  // Calculate: proceeds - repayment
-      "interestPaid": { "current": null, "previous": null },  // Negative
-      "dividendsPaid": { "current": null, "previous": null },  // Negative
-      "equityIssued": { "current": null, "previous": null },  // If present, positive
-      "netCashFromFinancing": { "current": null, "previous": null }  // Final line of section C
-    },
-    
-    "reconciliation": {
-      "netCashChange": { "current": null, "previous": null },  // A + B + C
-      "openingCash": { "current": null, "previous": null },
-      "closingCash": { "current": null, "previous": null },  // Must equal: opening + net change
-      "validationPassed": false  // Set to true if reconciliation matches
-    },
-    
-    "derivedMetrics": {
-      "freeCashFlow": { "current": null, "previous": null },  // Operating CF - Total Capex
-      "cashConversionRatio": { "current": null, "previous": null },  // Operating CF / Profit After Tax (from P&L)
-      "capexAsPercentOfRevenue": { "current": null, "previous": null },  // (Total Capex / Revenue) * 100
-      "dividendPayoutRatio": { "current": null, "previous": null }  // (Dividends Paid / Profit After Tax) * 100
-    },
-    
-    "yoyComparison": {
-      "operatingCashFlow": { "change": null, "changePercent": null },
-      "investingCashFlow": { "change": null, "changePercent": null },
-      "financingCashFlow": { "change": null, "changePercent": null },
-      "freeCashFlow": { "change": null, "changePercent": null },
-      "closingCash": { "change": null, "changePercent": null }
-    },
-    
+    "summary": "350-450 words or 'Cash Flow Statement not available'",
     "healthIndicators": {
-      "isOperatingCFPositive": null,  // true/false
-      "isFreeCFPositive": null,  // true/false
-      "cashFlowQuality": null,  // "Excellent" if Operating CF > PAT, "Good" if 70-100%, "Weak" if <70%
-      "workingCapitalTrend": null,  // "Improving" if WC changes are favorable, "Deteriorating" otherwise
-      "debtServiceAbility": null  // "Strong" if Operating CF > (Interest + Debt Repayment), else "Weak"
+      "cashFlowQuality": "Excellent|Good|Weak",
+      "qualityRationale": "2-3 sentences explaining rating based on OCF/PAT ratio, FCF trend, WC efficiency, debt dependency"
     },
-    
-    "analysis": "Provide detailed cash flow analysis IF you successfully extracted data. Discuss: 1) Quality of earnings (CF vs profit), 2) Working capital efficiency, 3) Capex intensity and growth investments, 4) Debt servicing capability, 5) Dividend sustainability, 6) Free cash flow adequacy. IF extraction failed: state 'Cash Flow Statement not available in expected format.'"
+    "operatingActivities": {
+      "profitBeforeTax": {"current": null, "previous": null},
+      "cashGeneratedFromOperations": {"current": null, "previous": null},
+      "taxesPaid": {"current": null, "previous": null},
+      "netCashFromOperating": {"current": null, "previous": null}
+    },
+    "investingActivities": {
+      "totalCapex": {"current": null, "previous": null},
+      "investmentsPurchased": {"current": null, "previous": null},
+      "investmentsSold": {"current": null, "previous": null},
+      "netCashFromInvesting": {"current": null, "previous": null}
+    },
+    "financingActivities": {
+      "netBorrowingChange": {"current": null, "previous": null},
+      "interestPaid": {"current": null, "previous": null},
+      "dividendsPaid": {"current": null, "previous": null},
+      "netCashFromFinancing": {"current": null, "previous": null}
+    },
+    "reconciliation": {
+      "netCashChange": {"current": null, "previous": null},
+      "openingCash": {"current": null, "previous": null},
+      "closingCash": {"current": null, "previous": null},
+      "validationPassed": false
+    },
+    "derivedMetrics": {
+      "freeCashFlow": {"current": null, "previous": null},
+      "cashConversionRatio": {"current": null, "previous": null},
+      "operatingCashFlowToPatRatio": {"current": null, "previous": null}
+    },
+    "yoyComparison": {
+      "operatingCashFlow": {"change": null, "changePercent": null},
+      "freeCashFlow": {"change": null, "changePercent": null}
+    }
   },
   "remuneration": {
-  "fiscalYear": "FY 2024-25",
-  "currencyUnit": "Crores",
-  "executiveDirectors":[
-   {
-      "name": "<Full Name>",
-      "designation": "Managing Director|CEO & Managing Director|Whole-time Director|Executive Director| Joint Managing Director |Director |Additional Director|Non-Executive Directors ",
+    "fiscalYear": "FY 2024-25",
+    "currencyUnit": "Crores",
+    "executiveDirectors": [{
+      "name": "string",
+      "designation": "MD|CEO|Whole-time Director",
       "remuneration": {
-        "salary": <number>,
-        "perquisites": <number>,
-        "commission": <number>,
-        "bonusPerformanceLinked": <number>,
-        "retirementBenefits": <number>,
-        "stockOptionsGranted": <number of options>,
-        "stockOptionsExercised": <number of options>,
-        "stockOptionValue": <fair value in lakhs/crores>,
-        "totalRemuneration": <number>,
-        "previousYear": <number (FY 2023-24 total)>
-      },
-      "tenure": "<years>",
-      "percentageIncreaseOverPreviousYear": "<X%>"
-    }
-  ],
-  "nonExecutiveDirectors": [
-    {
-      "name": "<Full Name>",
-      "designation": "Non-Executive Director|Independent Director|Nominee Director",
+        "salary": null,
+        "perquisites": null,
+        "commission": null,
+        "stockOptionsGranted": null,
+        "totalRemuneration": null,
+        "previousYear": null
+      }
+    }],
+    "nonExecutiveDirectors": [{
+      "name": "string",
+      "designation": "Independent|Non-Executive",
       "remuneration": {
-        "sittingFees": {
-          "boardMeetings": <number>,
-          "committeeMeetings": <number>,
-          "totalSittingFees": <number>
-        },
-        "commission": <number>,
-        "otherBenefits": <number>,
-        "totalRemuneration": <number>,
-        "previousYear": <number>
-      },
-      "meetingsAttended": "<X out of Y>"
-    }
-  ],
-  "keyManagerialPersonnel": [
-    {
-      "name": "<Full Name>",
-      "designation": "CEO|CFO|Company Secretary|COO|Chief Legal Officer",
-      "remuneration": {
-        "salary": <number>,
-        "perquisites": <number>,
-        "commission": <number>,
-        "bonusPerformanceLinked": <number>,
-        "retirementBenefits": <number>,
-        "stockOptionsGranted": <number of options>,
-        "totalRemuneration": <number>,
-        "previousYear": <number>
-      },
-      "isAlsoDirector": true|false
-    }
-  ],
-  "totalRemunerationSummary": {
-    "totalExecutiveDirectors": <number>,
-    "totalNonExecutiveDirectors": <number>,
-    "totalKMP": <number>,
-    "grandTotal": <number>,
-    "previousYearTotal": <number>,
-    "percentageChange": "<X%>"
-  },
-  "employeeStockOptionPlan": {
-    "planName": "<ESOP 2020, etc.>",
-    "optionsGrantedDuringYear": <number>,
-    "optionsExercisedDuringYear": <number>,
-    "optionsOutstanding": <number>,
-    "exercisePrice": <number per share>,
-    "vestingSchedule": "<description>",
-    "beneficiaries": "<Directors, KMP, Employees>"
-  },
-  "ratioAnalysis": {
-    "medianRemunerationOfEmployees": <number>,
-    "percentageIncreaseInMedianRemuneration": "<X%>",
-    "highestPaidDirector": "<Name>",
-    "highestPaidDirectorRemuneration": <number>,
-    "ratioOfHighestToMedian": "<X:1>",
-    "averagePercentileIncreaseInRemuneration": {
-      "directors": "<X%>",
-      "kmp": "<Y%>",
-      "allEmployees": "<Z%>"
-    }
-  },
-  "remunerationPolicy": {
-    "policyExists": true|false,
-    "approvedBy": "<Board/Shareholders/NRC>",
-    "keyPrinciples": [
-      "<Principle 1: Performance-linked pay>",
-      "<Principle 2: Market competitiveness>",
-      "<Principle 3: Long-term sustainability>"
-    ],
-    "performanceMetrics": [
-      "<Revenue growth>",
-      "<Profit margins>",
-      "<Return on equity>",
-      "<Customer satisfaction>"
-    ]
-  },
-  "complianceAndDisclosures": {
-    "section197Compliance": true|false,
-    "scheduleVCompliance": true|false,
-    "nrcRecommendations": "<Summary of Nomination & Remuneration Committee recommendations>",
-    "shareholderApproval": {
-      "required": true|false,
-      "obtained": true|false,
-      "resolutionDate": "<Date>",
-      "votingPercentage": "<X% in favor>"
-    }
-  },
-  "summary": "<3-4 sentence narrative covering: (1) Total remuneration paid to Executive Directors and increase/decrease from previous year, (2) Highest paid director and their compensation, (3) Non-Executive Directors sitting fees and commission structure, (4) Stock options granted to Directors/KMP and vesting details, (5) Key changes in remuneration policy or structure, (6) Ratio of highest director remuneration to median employee salary, (7) Check how many percentage of occupency remuneration from company profit if the remuneration is less than 5% the are good if above its bad .>"
-}
-  "auditInformation": 
-  {
-  "companyName": "Company Name",
-  "fiscalYear": "FY2026",
-  "reportType": "Consolidated Financial Statements",
-  "auditor": {
-    "firmName": "B S R & Co. LLP",
-    "registrationNumber": "101248W/W-100022",
-    "partnerName": "Aniruddha Godbole",
-    "partnerMembershipNumber": "105149",
-    "auditReportDate": "2025-04-10",
-    "location": "Mumbai",
-    "udin": "25105149BMLWYM7865"
-  },
-  "opinion": {
-    "type": "Unqualified Opinion",
-    "statement": "[Extract exact opinion paragraph - starting with 'In our opinion and to the best of our information...']",
-    "basisForOpinion": "[Summary: Audit conducted per SAs under Section 143(10), independent per ICAI Code of Ethics, sufficient audit evidence obtained]",
-    "isModified": false
-  },
-  "emphasisOfMatter": {
-    "present": false,
-    "description": null,
-    "referenceNote": null
-  },
-  "materialUncertainty": {
-    "present": false,
-    "description": null
-  },
-  "keyAuditMatters": [
-    {
-      "title": "Revenue recognition – Fixed price contracts using percentage of completion method",
-      "whyItsAKAM": "[Extract description of why this is significant - judgment required, estimation uncertainty, etc.]",
-      "auditorsResponse": "[Extract how auditor addressed it - procedures performed, evidence obtained]",
-      "referenceNotes": ["Note 5(a)", "Note 12"]
-    }
-  ],
-  "otherMatters": {
-    "componentAuditorsInvolved": true,
-    "numberOfSubsidiariesByOthers": 7,
-    "percentageAuditedByOthers": "15% of assets, 12% of revenue",
-    "relianceStatement": "[Extract statement about reliance on component auditors' reports]",
-    "unauditedComponents": ["Subsidiary A (immaterial)", "JV B (under liquidation)"]
-  },
-  "legalRegulatoryCompliance": {
-    "section143_3": {
-      "informationObtained": "Adequate",
-      "properBooksKept": "Yes",
-      "agreementWithBooks": "Yes",
-      "indASCompliance": "Yes",
-      "directorsDisqualified": "None",
-      "modifications": null,
-      "internalControlsOpinion": "Adequate - Refer Annexure B"
+        "sittingFees": {"totalSittingFees": null},
+        "commission": null,
+        "totalRemuneration": null
+      }
+    }],
+    "totalRemunerationSummary": {
+      "totalExecutiveDirectors": null,
+      "totalNonExecutiveDirectors": null,
+      "grandTotal": null,
+      "percentageChange": "string"
     },
-    "rule11": {
-      "litigationsDisclosed": "Yes - Note 20",
-      "foreseeableLossesProvided": "Yes",
-      "iepfTransfers": "On time",
-      "fundsToIntermediaries": "None - Note 23",
-      "fundsFromFundingParties": "None - Note 23",
-      "dividendCompliance": "Yes - Section 123 complied",
-      "auditTrail": {
-        "enabled": true,
-        "exceptions": "Not enabled for certain periods in 3 subsidiary accounting systems",
-        "tampering": "None detected",
-        "preserved": "Yes per statutory requirements"
+    "summary": "5-6 sentences: total paid, highest paid director, NED fees, stock options, remuneration as % of profit"
+  },
+  "auditInformation": {
+    "auditor": {
+      "firmName": "string",
+      "registrationNumber": "string",
+      "partnerName": "string",
+      "partnerMembershipNumber": "string",
+      "auditReportDate": "string",
+      "location": "string",
+      "udin": "string"
+    },
+    "opinion": {
+      "type": "Unqualified|Qualified|Adverse|Disclaimer",
+      "statement": "exact opinion paragraph",
+      "basisForOpinion": "string",
+      "isModified": false
+    },
+    "emphasisOfMatter": {
+      "present": false,
+      "description": null,
+      "referenceNote": null
+    },
+    "materialUncertainty": {
+      "present": false,
+      "description": null
+    },
+    "keyAuditMatters": [{
+      "title": "string",
+      "whyItsAKAM": "string",
+      "auditorsResponse": "string",
+      "referenceNotes": []
+    }],
+    "otherMatters": {
+      "componentAuditorsInvolved": false,
+      "numberOfSubsidiariesByOthers": null,
+      "percentageAuditedByOthers": "string",
+      "relianceStatement": "string",
+      "unauditedComponents": []
+    },
+    "legalRegulatoryCompliance": {
+      "section143_3": {
+        "informationObtained": "Adequate|Inadequate",
+        "properBooksKept": "Yes|No",
+        "agreementWithBooks": "Yes|No",
+        "indASCompliance": "Yes|No",
+        "directorsDisqualified": "None|List",
+        "modifications": null,
+        "internalControlsOpinion": "string"
+      },
+      "rule11": {
+        "litigationsDisclosed": "string",
+        "foreseeableLossesProvided": "string",
+        "iepfTransfers": "string",
+        "fundsToIntermediaries": "string",
+        "fundsFromFundingParties": "string",
+        "dividendCompliance": "string",
+        "auditTrail": {
+          "enabled": true,
+          "exceptions": "string",
+          "tampering": "string",
+          "preserved": "string"
+        }
+      },
+      "section197_16": {
+        "compliant": true,
+        "excessPayments": "None|Details"
       }
     },
-    "section197_16": {
-      "compliant": true,
-      "excessPayments": "None"
-    }
-  },
-  "caro": {
-    "applicable": true,
-    "annexure": "Annexure A",
-    "holdingCompanyRemarks": "No unfavorable answers, qualifications, or adverse remarks",
-    "subsidiariesWithIssues": [],
-    "subsidiariesCARONotIssued": [
-      {
-        "name": "MP Online Limited",
-        "cin": "U72400MP2006PLC018777"
+    "caro": {
+      "applicable": true,
+      "annexure": "Annexure A",
+      "holdingCompanyRemarks": "string from paragraph xxi",
+      "subsidiariesWithIssues": ["list subsidiaries with unfavorable remarks"],
+      "subsidiariesCARONotIssued": [{
+        "name": "string",
+        "cin": "string"
+      }]
+    },
+    "internalFinancialControls": {
+      "annexure": "Annexure B",
+      "opinion": "Adequate|Inadequate|Modified",
+      "scope": "string - Holding Company + Indian subsidiaries",
+      "exceptions": "string - list material weaknesses or null"
+    },
+    "consolidationScope": {
+      "subsidiaries": {
+        "total": 0,
+        "indian": 0,
+        "foreign": 0,
+        "auditedByComponentAuditors": 0
+      },
+      "associates": {
+        "total": 0,
+        "indian": 0,
+        "foreign": 0
+      },
+      "jointVentures": {
+        "total": 0,
+        "indian": 0,
+        "foreign": 0
+      },
+      "componentAuditors": {
+        "firms": ["string"],
+        "percentageOfRevenue": "string",
+        "percentageOfAssets": "string"
       }
-    ]
-  },
-  "internalFinancialControls": {
-    "annexure": "Annexure B",
-    "opinion": "Adequate and operating effectively",
-    "scope": "Holding Company + Indian subsidiaries incorporated under Companies Act 2013",
-    "exceptions": null
-  },
-  "consolidationScope": {
-    "subsidiaries": {
-      "total": 25,
-      "indian": 8,
-      "foreign": 17,
-      "auditedByComponentAuditors": 7
     },
-    "associates": {
-      "total": 3,
-      "indian": 2,
-      "foreign": 1
-    },
-    "jointVentures": {
-      "total": 1,
-      "indian": 1,
-      "foreign": 0
-    },
-    "componentAuditors": {
-      "firms": ["Local Firm ABC (USA)", "XYZ Partners (UK)"],
-      "percentageOfRevenue": "12%",
-      "percentageOfAssets": "15%"
+    "auditConcernsAndIssues": {
+      "overallRiskLevel": "Low|Medium|High|Critical",
+      "hasQualifiedOpinion": false,
+      "hasEmphasisOfMatter": false,
+      "hasMaterialUncertainty": false,
+      "hasInternalControlWeakness": false,
+      "concerns": [{
+        "type": "Qualified Opinion|KAM|CARO Issue|Internal Control|Compliance",
+        "severity": "Critical|Significant|Minor",
+        "title": "string",
+        "description": "string with amounts in Crores",
+        "financialImpact": "string in Crores",
+        "reference": "string",
+        "status": "Unresolved|Provided For|Addressed",
+        "investorImplication": "string"
+      }],
+      "redFlags": ["critical issues"],
+      "yellowFlags": ["concerns to watch"],
+      "positiveIndicators": ["clean audit points"],
+      "summary": "200+ words: clean audit or detail all concerns with investor implications"
     }
-  }
-}
-    
-
-}       
-
-⚠️⚠️⚠️ CRITICAL VALIDATION REMINDER BEFORE EXTRACTION ⚠️⚠️⚠️
-
-BEFORE extracting balance sheet numbers, you MUST:
-1. Find a table with heading "Balance Sheet" (not "Summary")
-2. Verify it has detailed line-item breakdown (not just totals)
-3. Check TWO columns of numbers exist (current + previous year)
-4. Verify Total Equity ≠ Total Assets (if equal, WRONG table!)
-5. Verify Total Liabilities > 0 (if zero, WRONG table!)
-
-IF you cannot find a valid detailed Balance Sheet table:
-→ Set ALL balance sheet values to null
-→ Set summary to: "Balance Sheet data not available in expected format in the annual report."
-→ DO NOT extract from summary/consolidated tables
-→ DO NOT use 0 - use null for unavailable data
-
-⚠️⚠️⚠️ FINAL REMINDER BEFORE YOU RESPOND ⚠️⚠️⚠️
-
-1. GO BACK TO THE DOCUMENT TEXT AT THE TOP OF THIS PROMPT
-2. READ THE ACTUAL BALANCE SHEET IN THAT DOCUMENT
-3. EXTRACT THE REAL NUMBERS FROM THAT SPECIFIC COMPANY'S DOCUMENT
-4. DO NOT USE 0 OR EXAMPLE NUMBERS - USE THE ACTUAL DATA YOU SEE IN THE DOCUMENT
-5. WRITE THE SUMMARY PARAGRAPH USING THOSE REAL EXTRACTED NUMBERS
-
-⚠️ CRITICAL: CALCULATE ALL YEAR-OVER-YEAR CHANGES using the actual extracted numbers:
-For EVERY financial metric in yoyComparison, calculate using your extracted numbers:
-- Absolute change = current - previous
-- Percentage change = ((current - previous) / previous) × 100
-
-Then use these calculations in the "summary" narrative with the ACTUAL NUMBERS you extracted.
-
-⚠️ REMEMBER: Extract from the ACTUAL DOCUMENT provided at the top, not from instruction examples!
-⚠️ Every company's numbers are different - find and use the real data from this specific document!
-✅ Look for the table with heading "Consolidated Balance Sheet"
-✅ Numbers will typically be in Indian format with commas: 1,24,936 → store as 124936 (strip commas)
-✅ The document text at the top contains the REAL balance sheet data you must use!
-
-CRITICAL VALIDATION BEFORE RETURNING:
-1. Balance sheet equation check: 
-   - totalAssets.current MUST equal totalEquity.current + totalLiabilities.current
-   - Example (lakhs): 621532 = 523111 + 98421 ✓
-   - Example (crores): 6215.32 = 5231.11 + 984.21 ✓
-
-2. Unit consistency check - ALL values must be in SAME scale:
-   - If Total Assets is 621532, then Equity should be ~523111 and Liabilities ~98421 (all 5-6 digits)
-   - If Total Assets is  6215.32, then Equity should be ~5231.11 and Liabilities ~984.21 (all have decimals)
-   - DO NOT mix formats: Don't have Assets=621532 with Equity=5231.11 (different scales)
-
-3. Annual vs Quarterly check:
-   - Balance sheet: "as at 31 March, 2025" (NOT "as at 31 December" quarterly)
-   - P&L: "Year ended 31 March, 2025" (NOT "Quarter ended")
-   - Revenue must be ANNUAL (if you see 5594, find the annual row showing ~162990)
-   - If Total Assets < 10000, you extracted quarterly - REJECT and find annual
-
-IMPORTANT: 
-- Extract values in the EXACT unit shown in table header (don't convert lakhs to crores or vice versa)
-- ALL balance sheet numbers must have consistent scale (all 5-6 digits OR all with decimals)
-- If a value is not found, use null instead of 0
-- Verify currency unit matches table header (₹ Lakhs, ₹ Crore, etc.)
-
-VALIDATION RULES:
-- Extract ACTUAL numbers from tables, DO NOT calculate
-- Identify currency unit (Lakhs or Crores) from table header
-- Use null if a component is not disclosed or marked with dash (-)
-- For Non-Executive Directors, salary should be 0 or null
-- Total should equal sum of components (salary + perquisites + commission + bonus)
-- Stock options: Capture NUMBER of options, not just value
-- If same person appears as Director and KMP, mark "isAlsoDirector": true and avoid double counting
-- Verify Section 197 compliance statements (total managerial remuneration limits)
-- All amounts in the unit specified (Lakhs or Crores)
-
-CRITICAL DISTINCTIONS:
-- "Salary" = Fixed monthly/annual compensation
-- "Perquisites" = Housing, car, medical, club memberships, etc.
-- "Commission" = Profit-linked or performance-based variable pay
-- "Bonus" = Annual performance bonus
-- "Stock Options" = Long-term incentive (ESOP grants)
-- "Sitting Fees" = Per-meeting attendance fees (Non-Executive only)
-
-Return ONLY the JSON object, no additional text.
-
-// After the Balance Sheet/P&L extraction sections, ADD:
-
-6. AUDIT INFORMATION EXTRACTION (CRITICAL for investor decisions):
-
-Instructions
-Extract the following information from the Consolidated Financial Statements audit report ONLY:
-
-1. AUDITOR IDENTIFICATION
-Audit Firm Name: Full name of the chartered accountants firm
-Firm Registration Number: ICAI registration number (format: XXXXXXW/W-XXXXXX)
-Partner Name: Name of the signing partner
-Partner Membership Number: ICAI membership number
-Audit Report Date: Date of signing the audit report
-Location: Place from where report is signed
-UDIN: Unique Document Identification Number
-2. AUDIT OPINION
-Opinion Type: Identify as one of:
-"Unqualified/Unmodified Opinion" (clean opinion - financials present fairly)
-"Qualified Opinion" (with specific exceptions/disagreements)
-"Adverse Opinion" (financials don't present fairly)
-"Disclaimer of Opinion" (unable to form opinion)
-Opinion Statement: Extract the exact opinion paragraph verbatim
-Basis for Opinion: Summary of the basis section (audit standards followed, independence confirmation)
-Basis for Qualified/Adverse Opinion (if applicable): Specific reasons for modification with amounts/impact
-3. EMPHASIS OF MATTER
-Present: Yes/No
-Description: Extract the full paragraph describing the matter
-Reference Note: Note number in financial statements
-Impact Statement: Confirm "opinion is not modified" statement is present
-4. MATERIAL UNCERTAINTY RELATED TO GOING CONCERN
-Present: Yes/No
-Description: Extract details if present
-Management's Response: How management addressed the uncertainty
-5. KEY AUDIT MATTERS (KAM)
-For EACH Key Audit Matter, extract:
-
-Field	Description
-Title	Brief heading (e.g., "Revenue Recognition - Fixed Price Contracts")
-Why it's a KAM	Auditor's explanation of significance (complexity, judgment, risk)
-How Auditor Addressed	Audit procedures performed to address the matter
-Reference Notes	Financial statement note numbers
-Common KAMs in Consolidated Statements:
-
-Revenue recognition across multiple entities
-Goodwill impairment testing (from acquisitions)
-Consolidation complexities (subsidiaries in different countries/currencies)
-Tax contingencies across group entities
-Inter-company eliminations and related party transactions
-Fair value measurements of investments in associates/JVs
-Inventory valuation across geographies
-6. OTHER MATTERS
-Component Auditors: Are other auditors involved? (Yes/No)
-Number of Subsidiaries: How many subsidiaries audited by component auditors?
-Percentage Audited by Others: What % of consolidated assets/revenue audited by others?
-Reliance Statement: Extract statement about reliance on other auditors' work
-Unaudited Components: List any subsidiaries/associates not audited
-7. REPORT ON OTHER LEGAL & REGULATORY REQUIREMENTS
-Section 143(3) of Companies Act Reporting:
-  a. Information & explanations obtained: Adequate/Inadequate
-b. Proper books of account maintained: Yes/No/Exceptions
-c. Agreement with books of account: Yes/No
-d. Compliance with Ind AS: Yes/No
-e. Directors disqualified: None/List
-f. Modifications (if any): Details
-g. Internal financial controls: Adequate/Inadequate (Annexure reference)
-
-Rule 11 of Companies (Audit and Auditors) Rules, 2014:
- 
-a. Pending litigations disclosed: Yes/No (Note reference)
-b. Material foreseeable losses provided: Yes/No (Note reference)
-c. Amounts transferred to IEPF: On time/Delayed/None
-d. Funds advanced to intermediaries: Details (Note reference)
-e. Funds received from funding parties: Details (Note reference)
-f. Dividend compliance: Yes/No/Details
-g. Audit trail in accounting software: Enabled/Not enabled/Exceptions
-
-Section 197(16) - Director Remuneration:
-
-Compliance status: Yes/No
-Excess payments: None/Details
-8. CARO REPORTING (Annexure A)
-Applicability: Applicable/Not Applicable
-Holding Company CARO: Qualifications/adverse remarks? (Yes/No)
-Subsidiary Companies: List subsidiaries whose CARO has unfavorable remarks
-Annexure Statement: Extract summary statement (paragraph xxi)
-9. INTERNAL FINANCIAL CONTROLS (Annexure B)
-Opinion Type: Adequate/Inadequate/Modified
-Scope: Holding company + Indian subsidiaries
-Exceptions: List any material weaknesses identified
-Reference: Annexure letter designation (usually "Annexure B")
-
-10. CONSOLIDATION-SPECIFIC DISCLOSURES
-Extract details specific to consolidated reporting:
-
-Entities Included in Consolidation:
-
-{
-  "subsidiaries": {
-    "total": 0,
-    "indian": 0,
-    "foreign": 0,
-    "auditedByComponentAuditors": 0
   },
-  "associates": {
-    "total": 0,
-    "indian": 0,
-    "foreign": 0
-  },
-  "jointVentures": {
-    "total": 0,
-    "indian": 0,
-    "foreign": 0
-  }
-}
+  "keyRisks": ["string"],
+  "keyOpportunities": ["string"]
 }
 
-Extraction Strategy
-Locate the Consolidated Audit Report:
-
-Search for: "Independent Auditor's Report to the Members"
-Look for: "Consolidated Financial Statements" or "Consolidated Balance Sheet"
-❌ CRITICAL REJECTION: If you see "Standalone Financial Statements" or "Standalone Audit Report" → SKIP IT COMPLETELY
-❌ Standalone = Parent company only (wrong - excludes subsidiaries)
-✅ MUST find "Consolidated Financial Statements" or "Consolidated Audit Report"
-✅ If Standalone appears first in document, IGNORE IT and keep searching below for Consolidated
-Search for: "Independent Auditor's Report to the Members" followed by "Consolidated Financial Statements"
-Look for: "Consolidated Financial Statements" or "Consolidated Balance Sheet" in the report heading
-Section Markers (in order of appearance):
-
-- Opinion
-- Basis for Opinion
-- Emphasis of Matter (optional)
-- Material Uncertainty (optional)
-- Key Audit Matters
-- Other Information
-- Management's Responsibilities
-- Auditor's Responsibilities
-- Other Matters (if component auditors involved)
-- Report on Other Legal and Regulatory Requirements
-  * Section 143(3)
-  * Rule 11
-  * Section 197(16)
-- Annexure A (CARO)
-- Annexure B (Internal Controls)
+Return ONLY valid JSON, no markdown wrappers.`;
 
 
-Validation Checks:
-
-✅ Confirm report title includes "Consolidated"
-✅ Verify opinion covers "Holding Company and its subsidiaries"
-✅ Check for "Other Matters" paragraph (usually present in consolidated reports)
-✅ Validate CARO statement mentions "Holding Company"
-✅ Ensure all KAMs are captured with full descriptions
-Special Consolidated Considerations
-
-Opinion Type Indicators:
-
-Unqualified: "give a true and fair view in conformity with..."
-Qualified: "Except for the effects of the matter described in the Basis for Qualified Opinion..."
-Adverse: "do not give a true and fair view..."
-Disclaimer: "we do not express an opinion..."
-Component Auditor Red Flags:
-
-Large percentage (>20%) audited by others = higher risk
-Component auditors in high-risk jurisdictions
-Delayed CARO reports from subsidiaries
-Consolidation KAMs to Watch:
-
-Goodwill impairment (acquired subsidiaries)
-Foreign currency translation adjustments
-Intercompany eliminations
-Business combinations during the year
-Step acquisitions or loss of control
-CARO in Consolidated Context:
-
-CARO applies to holding company separately
-Each Indian subsidiary has its own CARO
-Principal auditor summarizes in Annexure A
-Watch for subsidiaries whose CARO is delayed/missing
-
-
-7. CASH FLOW STATEMENT EXTRACTION FROM THE DOCUMENT ABOVE (minimum 400 words):
-
-⚠️⚠️⚠️ MANDATORY: ONLY EXTRACT CONSOLIDATED CASH FLOW - REJECT STANDALONE ⚠️⚠️⚠️
-
-🚫 CRITICAL REJECTION RULES:
-❌ Immediately SKIP any heading with "Standalone Cash Flow Statement"
-❌ Immediately SKIP any heading with "Standalone Statement of Cash Flows"
-❌ DO NOT extract from Standalone under any circumstances
-
-✅ ONLY EXTRACT FROM:
-1. Heading MUST say "Consolidated Statement of Cash Flows" OR "Consolidated Cash Flow Statement"
-2. Verify word "Consolidated" appears in section heading
-3. Usually appears AFTER Consolidated Balance Sheet and P&L sections
-
-🔍 MANDATORY SEARCH STRATEGY:
-Step 1: Search document for "Consolidated Statement of Cash Flows" or "Consolidated Cash Flow Statement"
-Step 2: If you find "Standalone" version first (common in annual reports):
-       → ❌ IGNORE completely - do NOT extract
-       → ⏩ Continue searching for Consolidated version
-Step 3: Only when heading explicitly says "Consolidated":
-       → ✅ Verify "Consolidated" word is present
-       → ✅ Confirm it's NOT Standalone
-       → ✅ Proceed with extraction
-
-⚠️ FIND THE CORRECT "Cash Flow Statement" TABLE:
-
-TEXTUAL LANDMARKS TO LOCATE CORRECT SECTION:
-
-1️⃣ SKIP these wrong sections:
-   ❌ Any "Standalone Cash Flow Statement" - SKIP IMMEDIATELY
-   ❌ Summary tables or highlights sections
-   ❌ Segment-wise cash flow breakdowns
-   ❌ Tables in MD&A with cash flow metrics
-
-2️⃣ FIND the correct heading:
-   ✅ MUST have "Consolidated Statement of Cash Flows" OR "Consolidated Cash Flow Statement"
-   ✅ Verify "Consolidated" is visible (NOT Standalone)
-   ✅ Look for unit indicator: "(₹ in Crore)" OR "(In ₹ Lakhs)" immediately after heading
-   ✅ Column headers: "Particulars  Note  Year ended March 31, 2025  Year ended March 31, 2024"
-
-3️⃣ VERIFY correct structure BEFORE extracting:
-   ✅ Heading says "Consolidated" (NOT "Standalone")
-   ✅ Three main sections visible:
-      • A. Cash flows from operating activities
-      • B. Cash flows from investing activities
-      • C. Cash flows from financing activities
-   ✅ Each section has detailed line items with two numbers (current year | previous year)
-   ✅ Final lines show:
-      • "Net increase/(decrease) in cash and cash equivalents"
-      • "Cash and cash equivalents at beginning of year"
-      • "Cash and cash equivalents at end of year"
-
-✅ CORRECT CASH FLOW STATEMENT STRUCTURE:
-
-Statement of Cash Flows
-(₹ in Crore) OR (In ₹ Lakhs)
--------
-Particulars  Note  For the year ended March 31, 2025  March 31, 2024
--------
-
-A. CASH FLOWS FROM OPERATING ACTIVITIES:
-   Profit before tax                     [num]      [num]
-   Adjustments for:
-     Depreciation and amortization       [num]      [num]
-     Interest income                    ([num])    ([num])
-     Interest expense                    [num]      [num]
-     Dividend income                    ([num])    ([num])
-     [more adjustments...]
-   Operating profit before working capital changes  [num]  [num]
-   
-   Changes in working capital:
-     (Increase)/decrease in inventories            ([num])  [num]
-     (Increase)/decrease in trade receivables      ([num])  [num]
-     Increase/(decrease) in trade payables          [num]  ([num])
-     [more working capital items...]
-   
-   Cash generated from operations                   [num]  [num]
-   Income taxes paid                               ([num]) ([num])
-   Net cash from operating activities (A)           [num]  [num]
-
-B. CASH FLOWS FROM INVESTING ACTIVITIES:
-   Purchase of property, plant and equipment       ([num]) ([num])
-   Purchase of intangible assets                   ([num]) ([num])
-   Proceeds from sale of fixed assets               [num]   [num]
-   Investment in subsidiaries/associates           ([num]) ([num])
-   Purchase of investments                         ([num]) ([num])
-   Sale of investments                              [num]   [num]
-   Interest received                                [num]   [num]
-   Dividend received                                [num]   [num]
-   [more investing items...]
-   Net cash used in investing activities (B)       ([num]) ([num])
-
-C. CASH FLOWS FROM FINANCING ACTIVITIES:
-   Proceeds from issue of equity shares             [num]   [num]
-   Proceeds from borrowings                         [num]   [num]
-   Repayment of borrowings                         ([num]) ([num])
-   Interest paid                                   ([num]) ([num])
-   Dividends paid                                  ([num]) ([num])
-   [more financing items...]
-   Net cash from/(used in) financing activities (C) [num]  ([num])
-
-Net increase/(decrease) in cash and cash equivalents (A+B+C)  [num]  [num]
-Cash and cash equivalents at beginning of year               [num]  [num]
-Cash and cash equivalents at end of year                     [num]  [num]
-
-🔍 VALIDATION CHECKLIST (verify ALL before extracting):
-✅ Has "Consolidated" in heading (NOT "Standalone")
-✅ Has "(₹ in Crore)" or similar unit indicator
-✅ Column header shows TWO years: March 31, 2025 and March 31, 2024
-✅ Three main sections: Operating, Investing, Financing
-✅ Each section has subtotal line
-✅ Numbers in parentheses represent outflows (negative)
-✅ Final reconciliation: Opening balance + Net change = Closing balance
-
-🚨 RED FLAGS - SKIP THESE SECTIONS:
-❌ Only shows one year of data (must have current + previous)
-❌ Missing any of the three main sections (Operating/Investing/Financing)
-❌ Shows quarterly data instead of annual ("Q1 FY25", "Quarter ended")
-❌ Segment-wise cash flow breakdowns (by geography/product)
-❌ Says "Standalone" anywhere in heading
-
-EXTRACTION INSTRUCTIONS:
-
-Extract from the VALIDATED Consolidated Cash Flow Statement table:
-
-A. OPERATING ACTIVITIES:
-   1. "Profit before tax" - Starting point
-   2. Look for "Operating profit before working capital changes" OR "Cash generated from operations before tax"
-   3. Extract "Cash generated from operations" (after working capital adjustments)
-   4. Extract "Income taxes paid" (negative number in parentheses)
-   5. Extract "Net cash from operating activities" (final line of section A)
-
-B. INVESTING ACTIVITIES:
-   1. Extract "Purchase of property, plant and equipment" (Capex - negative in parentheses)
-   2. Extract "Purchase of intangible assets" if present (negative)
-   3. Look for net investments: "Purchase of investments" minus "Sale of investments"
-   4. Extract "Interest received" and "Dividend received"
-   5. Extract "Net cash used in investing activities" (final line of section B - usually negative)
-
-C. FINANCING ACTIVITIES:
-   1. Extract "Proceeds from borrowings" (positive inflow)
-   2. Extract "Repayment of borrowings" (negative outflow in parentheses)
-   3. Extract "Interest paid" (negative in parentheses)
-   4. Extract "Dividends paid" (negative in parentheses)
-   5. Extract "Proceeds from issue of equity shares" if present
-   6. Extract "Net cash from/(used in) financing activities" (final line of section C)
-
-RECONCILIATION:
-   • Extract "Net increase/(decrease) in cash and cash equivalents" (A+B+C)
-   • Extract "Cash and cash equivalents at beginning of year"
-   • Extract "Cash and cash equivalents at end of year"
-   • VERIFY: Beginning + Net change = Ending (must match!)
-
-NUMBER PARSING:
-• Strip ALL commas: "12,345.67" → 12345.67
-• Parentheses mean negative: "(1,234)" → -1234
-• Ignore note references (small numbers < 100)
-• All values in SAME unit (Crores OR Lakhs - check heading)
-
-CRITICAL VALIDATION BEFORE RETURNING:
-1. Cash flow reconciliation:
-   - Opening Cash + (Operating Cash Flow + Investing Cash Flow + Financing Cash Flow) = Closing Cash
-   - Example: 5,000 + (8,000 - 3,000 - 2,000) = 8,000 ✓
-
-2. Operating cash flow reasonableness:
-   - Should be positive for healthy companies
-   - Compare to Profit Before Tax - should be similar magnitude
-   - If Operating CF < 0 while PBT > 0, check for working capital drain
-
-3. Free Cash Flow calculation:
-   - Free Cash Flow = Operating Cash Flow - Capex
-   - Capex = "Purchase of PPE" + "Purchase of intangible assets"
-   - Example: 8,000 - 2,500 = 5,500 FCF ✓
-
-4. Unit consistency:
-   - ALL cash flow values in SAME scale (Crores OR Lakhs)
-   - If Operating CF is 8,234.56, then Investing CF should be ~3,156.23 (same decimal format)
-   - DO NOT mix: Operating CF = 82345.6 with Investing CF = 3156 (different scales)
-
-IF YOU CANNOT FIND "Consolidated Statement of Cash Flows":
-→ ❌ DO NOT extract from Standalone
-→ ❌ DO NOT calculate or estimate
-→ Return: "Consolidated Cash Flow Statement not found in document"
-→ Set all cashFlow values to null
-→ Continue with other extractions
-i need thses prompt without missing in minimal
-
-`;
-
-                const insightsResponse = await callGeminiAPI(extractionPrompt, { temperature: 0.2, maxTokens: 200000 });
+                const insightsResponse = await callGeminiAPI(extractionPrompt, { temperature: 0.2, maxTokens: 800000 });
                 
                 // Debug: Log raw Gemini response
                 console.log(`🔍 [DEBUG Annual] Response length:`, insightsResponse?.length);
@@ -2518,7 +1806,7 @@ i need thses prompt without missing in minimal
             }
         }
     }
-}
+}  // Close if (!extractedInsights) block
 
 // Continue with original validation flow - extractedInsights now contains salvaged data
 if (extractedInsights) {
@@ -2593,6 +1881,22 @@ if (extractedInsights) {
                             console.log(`✅ [Calculate] Set liabilities to:`, extractedInsights.balanceSheet.liabilities.totalLiabilities);
                         } else {
                             console.log(`✅ [Skip] Liabilities already has value:`, liabilities);
+                        }
+                    }
+                    
+                    // SANITIZE unauditedComponents - Gemini sometimes returns objects instead of strings
+                    if (extractedInsights.auditInformation?.otherMatters?.unauditedComponents) {
+                        const unaudited = extractedInsights.auditInformation.otherMatters.unauditedComponents;
+                        if (Array.isArray(unaudited) && unaudited.length > 0) {
+                            // Check if first element is an object (wrong format)
+                            if (typeof unaudited[0] === 'object' && unaudited[0] !== null) {
+                                console.warn(`⚠️ [Sanitize] unauditedComponents contains objects, extracting names only`);
+                                // Extract just the name field from each object
+                                extractedInsights.auditInformation.otherMatters.unauditedComponents = unaudited.map((item: any) => 
+                                    typeof item === 'object' ? (item.name || item.companyName || JSON.stringify(item)) : String(item)
+                                );
+                                console.log(`✅ [Sanitize] Cleaned unauditedComponents to strings:`, extractedInsights.auditInformation.otherMatters.unauditedComponents);
+                            }
                         }
                     }
                     
@@ -2692,37 +1996,51 @@ if (extractedInsights) {
                     
                     return { type: 'annual' as const, data: extractedInsights };
                 }  // Close if (extractedInsights) block
-                    } catch (extractError: any) {
-                        console.error(`❌ [Annual] AI extraction failed:`, extractError.message);
-                        return { type: 'annual' as const, data: null };
-                    }
+                } catch (extractError: any) {
+                    console.error(`❌ [Annual] AI extraction failed:`, extractError.message);
+                    return { type: 'annual' as const, data: null };
+                }
                 })()
             );
         }
         
         // ============================================
-        // PHASE 6: AWAIT PARALLEL PROCESSING & MERGE RESULTS
+        // PHASE 6: SEQUENTIAL PROCESSING (TPM Optimization)
         // ============================================
         if (processingPromises.length > 0) {
-            console.log(`⚡ [Parallel] Processing ${processingPromises.length} new items simultaneously...`);
-            const results = await Promise.all(processingPromises);
+            console.log(`🔄 [Sequential] Processing ${processingPromises.length} items one by one (TPM limit optimization)...`);
             
-            // Merge results with cached data
-            results.forEach(result => {
-                if (!result) return;
+            for (let i = 0; i < processingPromises.length; i++) {
+                const itemNum = i + 1;
+                console.log(`⏳ [Sequential ${itemNum}/${processingPromises.length}] Processing...`);
                 
-                if (result.type === 'quarterly' && result.data) {
-                    quarterlyInsights = result.data;
-                    if ('quarter' in result) quarter = result.quarter;
-                    if ('rawTranscript' in result) rawTranscript = result.rawTranscript;
-                } else if (result.type === 'earningsCall' && result.data) {
-                    earningsCallInsights = result.data;
-                } else if (result.type === 'annual' && result.data) {
-                    annualReportInsights = result.data;
+                try {
+                    const result = await processingPromises[i];
+                    
+                    if (!result) {
+                        console.warn(`⚠️ [Sequential ${itemNum}/${processingPromises.length}] No data returned`);
+                        continue;
+                    }
+                    
+                    if (result.type === 'quarterly' && result.data) {
+                        quarterlyInsights = result.data;
+                        if ('quarter' in result) quarter = result.quarter;
+                        if ('rawTranscript' in result) rawTranscript = result.rawTranscript;
+                        console.log(`✅ [Sequential ${itemNum}/${processingPromises.length}] Quarterly insights extracted`);
+                    } else if (result.type === 'annual' && result.data) {
+                        annualReportInsights = result.data;
+                        console.log(`✅ [Sequential ${itemNum}/${processingPromises.length}] Annual report insights extracted`);
+                    }else if (result.type === 'earningsCall' && result.data) {
+                        earningsCallInsights = result.data;
+                        console.log(`✅ [Sequential ${itemNum}/${processingPromises.length}] Earnings call metadata stored`);
+                    }
+                } catch (error: any) {
+                    console.error(`❌ [Sequential ${itemNum}/${processingPromises.length}] Processing failed:`, error.message);
+                    // Continue with next item even if this one fails
                 }
-            });
+            }
             
-            console.log(`✅ [Parallel] All new data processed successfully`);
+            console.log(`✅ [Sequential] All items processed successfully`);
         }
         
         // Cache the results
@@ -2737,12 +2055,12 @@ if (extractedInsights) {
             fromCache: annualFromCache && quarterlyFromCache && earningsCallFromCache,
             quarter: quarter,
             source: 'Hybrid (Cache + Fresh Fetch)',
-            screenerSource: true,
+            OSource: true,
             optimization: {
                 annualCached: annualFromCache,
                 quarterlyCached: quarterlyFromCache,
                 earningsCallCached: earningsCallFromCache,
-                parallelProcessing: processingPromises.length > 0
+                sequentialProcessing: processingPromises.length > 0
             }
         };
         
@@ -3225,7 +2543,7 @@ Provide detailed analysis in this EXACT JSON format:
         outlook: comprehensiveData.quarterlyInsights.outlook,
         competitivePosition: comprehensiveData.quarterlyInsights.competitivePosition,
         summary: comprehensiveData.quarterlyInsights.summary,
-        source: comprehensiveData.source || 'Screener.in',
+        source: comprehensiveData.source || 'O.in',
         fromCache: comprehensiveData.fromCache
     }
 }),
@@ -3257,7 +2575,7 @@ Provide detailed analysis in this EXACT JSON format:
         investmentThesis: comprehensiveData.earningsCallInsights.investmentThesis,
         keyTakeaways: comprehensiveData.earningsCallInsights.keyTakeaways,
         summary: comprehensiveData.earningsCallInsights.summary,
-        source: 'Screener.in Concalls',
+        source: 'O.in Concalls',
         fromCache: comprehensiveData.fromCache
     }
     };

@@ -421,9 +421,25 @@ export default function StockCard({ data }: { data: StockData }) {
   const minValue = allPrices.length > 0 ? Math.min(...allPrices) * 0.98 : data.current.price * 0.95;
   const maxValue = allPrices.length > 0 ? Math.max(...allPrices) * 1.02 : data.current.price * 1.05;
 
+  // Safely convert any value to a displayable string
+  const safeString = (val: any): string => {
+    if (val === null || val === undefined) return '';
+    if (typeof val === 'string') return val;
+    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
+    if (typeof val === 'object') {
+      // Handle objects like {name, assets, revenues, netProfit, netCashFlows, reason}
+      return Object.entries(val)
+        .filter(([, v]) => v !== null && v !== undefined && v !== '')
+        .map(([k, v]) => `${k}: ${v}`)
+        .join(' | ');
+    }
+    return String(val);
+  };
+
   // Parse bullet points to remove markdown
-  const parseBulletPoint = (text: string) => {
-    return text.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
+  const parseBulletPoint = (text: any) => {
+    const str = safeString(text);
+    return str.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
   };
 
     // Handle force refresh of annual report
@@ -731,10 +747,10 @@ export default function StockCard({ data }: { data: StockData }) {
               </div>
               <p className="text-sm sm:text-base text-gray-300 mb-3">{currentPrediction.tradingSignal.description}</p>
               <div className="text-xs sm:text-sm text-gray-400 space-y-2">
-                {currentPrediction.tradingSignal.reasons.map((reason, idx) => (
+                {currentPrediction.tradingSignal.reasons.map((reason: any, idx: number) => (
                   <div key={idx} className="flex items-start gap-2">
                     <span className="text-cyan-400 mt-0.5">•</span>
-                    <span>{reason}</span>
+                    <span>{safeString(reason)}</span>
                   </div>
                 ))}
               </div>
@@ -1395,7 +1411,7 @@ export default function StockCard({ data }: { data: StockData }) {
       <div className="bg-gray-800/40 rounded-xl p-4 mb-6">
         <h4 className="text-sm font-semibold text-gray-300 mb-3">Key Insights</h4>
         <ul className="space-y-2">
-          {data.bulletPoints.map((point, index) => (
+          {data.bulletPoints.map((point: any, index: number) => (
             <li key={index} className="text-sm text-gray-300 flex items-start gap-2">
               <span className="text-green-400">•</span>
               <span>{parseBulletPoint(point)}</span>
@@ -1858,10 +1874,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <span>⚠️</span> Key Risks
                   </h4>
                   <ul className="space-y-2">
-                    {data.annualReport.keyRisks.map((risk: string, idx: number) => (
+                    {data.annualReport.keyRisks.map((risk: any, idx: number) => (
                       <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
                         <span className="text-red-400 mt-1">•</span>
-                        <span>{risk}</span>
+                        <span>{safeString(risk)}</span>
                       </li>
                     ))}
                   </ul>
@@ -1876,10 +1892,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <span>✨</span> Key Opportunities
                   </h4>
                   <ul className="space-y-2">
-                    {data.annualReport.keyOpportunities.map((opp: string, idx: number) => (
+                    {data.annualReport.keyOpportunities.map((opp: any, idx: number) => (
                       <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
                         <span className="text-emerald-400 mt-1">•</span>
-                        <span>{opp}</span>
+                        <span>{safeString(opp)}</span>
                       </li>
                     ))}
                   </ul>
@@ -2176,8 +2192,8 @@ export default function StockCard({ data }: { data: StockData }) {
                               <div className="mt-2 pt-2 border-t border-purple-500/20">
                                 <p className="text-xs text-slate-400 mb-2">Unaudited Components:</p>
                                 <ul className="list-disc list-inside space-y-1">
-                                  {data.annualReport.auditInformation.otherMatters.unauditedComponents.map((component: string, idx: number) => (
-                                    <li key={idx} className="text-sm">{component}</li>
+                                  {data.annualReport.auditInformation.otherMatters.unauditedComponents.map((component: any, idx: number) => (
+                                    <li key={idx} className="text-sm">{safeString(component)}</li>
                                   ))}
                                 </ul>
                               </div>
@@ -2501,9 +2517,9 @@ export default function StockCard({ data }: { data: StockData }) {
                             <div className="mt-3 pt-3 border-t border-slate-600/30">
                               <p className="text-xs text-slate-400 mb-2">Audit Firms:</p>
                               <div className="flex flex-wrap gap-2">
-                                {data.annualReport.auditInformation.consolidationScope.componentAuditors.firms.map((firm: string, idx: number) => (
+                                {data.annualReport.auditInformation.consolidationScope.componentAuditors.firms.map((firm: any, idx: number) => (
                                   <span key={idx} className="text-xs bg-cyan-500/20 px-3 py-1 rounded-full text-cyan-200 border border-cyan-500/30">
-                                    {firm}
+                                    {safeString(firm)}
                                   </span>
                                 ))}
                               </div>
@@ -3030,8 +3046,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-green-400 mb-2">✅ Highlights</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.businessHighlights.map((item: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        {data.quarterlyReport.managementCommentary.businessHighlights.map((item: any, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
                         ))}
                       </ul>
                     </div>
@@ -3043,8 +3059,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-red-400 mb-2">⚠️ Challenges</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.challenges.map((item: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        {data.quarterlyReport.managementCommentary.challenges.map((item: any, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
                         ))}
                       </ul>
                     </div>
@@ -3056,8 +3072,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-blue-400 mb-2">🚀 Opportunities</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.opportunities.map((item: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
+                        {data.quarterlyReport.managementCommentary.opportunities.map((item: any, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
                         ))}
                       </ul>
                     </div>
@@ -3070,8 +3086,8 @@ export default function StockCard({ data }: { data: StockData }) {
                       <div className="space-y-1.5 text-xs text-gray-300">
                         {/* Handle ARRAY format (from Screener quarterly data) */}
                         {Array.isArray(data.quarterlyReport.managementCommentary.futureGuidance) ? (
-                          data.quarterlyReport.managementCommentary.futureGuidance.map((item: string, idx: number) => (
-                            <div key={idx}>• {item}</div>
+                          data.quarterlyReport.managementCommentary.futureGuidance.map((item: any, idx: number) => (
+                            <div key={idx}>• {safeString(item)}</div>
                           ))
                         ) : (
                           /* Handle OBJECT format (from earnings call transcript) */
@@ -3164,10 +3180,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="mb-2">
                       <div className="text-xs text-gray-400 mb-1">Key Drivers:</div>
                       <ul className="mt-1 space-y-1">
-                        {data.quarterlyReport.outlook.keyDrivers.map((driver: string, idx: number) => (
+                        {data.quarterlyReport.outlook.keyDrivers.map((driver: any, idx: number) => (
                           <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
                             <span className="text-indigo-400">▸</span>
-                            <span>{driver}</span>
+                            <span>{safeString(driver)}</span>
                           </li>
                         ))}
                       </ul>
@@ -3178,10 +3194,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <div className="text-xs text-gray-400 mb-1">Risks:</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.outlook.risks.map((risk: string, idx: number) => (
+                        {data.quarterlyReport.outlook.risks.map((risk: any, idx: number) => (
                           <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
                             <span className="text-red-400">⚠</span>
-                            <span>{risk}</span>
+                            <span>{safeString(risk)}</span>
                           </li>
                         ))}
                       </ul>
@@ -3209,8 +3225,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="mb-3">
                       <div className="text-xs text-gray-400 mb-1">Competitive Advantages</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {advantage}</li>
+                        {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: any, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {safeString(advantage)}</li>
                         ))}
                       </ul>
                     </div>
@@ -3221,8 +3237,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <div className="text-xs text-gray-400 mb-1">Industry Trends</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.competitivePosition.industryTrends.map((trend: string, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {trend}</li>
+                        {data.quarterlyReport.competitivePosition.industryTrends.map((trend: any, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {safeString(trend)}</li>
                         ))}
                       </ul>
                     </div>

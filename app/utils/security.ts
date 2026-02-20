@@ -6,6 +6,8 @@
 import validator from 'validator';
 import mongoose from 'mongoose';
 
+
+
 // ============================================
 // 1. RATE LIMITING (Persistent MongoDB Storage)
 // ============================================
@@ -52,7 +54,15 @@ export async function checkRateLimit(identifier: string): Promise<{ allowed: boo
     // Try persistent storage first
     if (USE_PERSISTENT_RATE_LIMIT) {
         try {
-            return await checkRateLimitPersistent(identifier, now);
+            // ✅ Add timeout wrapper to fail fast
+            const timeoutPromise = new Promise<never>((_, reject) => 
+                setTimeout(() => reject(new Error('MongoDB connection timeout')), 3000)
+            );
+            
+            return await Promise.race([
+                checkRateLimitPersistent(identifier, now),
+                timeoutPromise
+            ]);
         } catch (error) {
             console.warn('⚠️ [Rate Limit] MongoDB unavailable, falling back to in-memory:', error);
             // Fall through to in-memory
@@ -67,6 +77,10 @@ export async function checkRateLimit(identifier: string): Promise<{ allowed: boo
  * Persistent MongoDB-based rate limiting
  */
 async function checkRateLimitPersistent(identifier: string, now: number): Promise<{ allowed: boolean; retryAfter?: number }> {
+    // ✅ FIX: Ensure MongoDB connection before querying
+    const connectToDatabase = (await import('@/DB/MongoDB')).default;
+    await connectToDatabase();
+    
     const resetTime = new Date(now + RATE_LIMIT_WINDOW);
     
     // Try to find existing entry
@@ -259,11 +273,15 @@ export function getClientIp(request: Request): string {
 export function getSecurityHeaders() {
     return {
         'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
+        'X-Frame-Options': 'DENY', 
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://query1.finance.yahoo.com https://www.screener.in https://www.nseindia.com https://generativelanguage.googleapis.com",
-        'Referrer-Policy': 'strict-origin-when-cross-origin'
+        // CORS headers for Electron app and Firebase
+        'Access-Control-Allow-Origin': '*', // Allow all origins for localhost development
+        'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-API-Key',
+        'Access-Control-Allow-Credentials': 'true',
+        'Content-Security-Policy': "default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: https:; connect-src 'self' https://query1.finance.yahoo.com https://www.screener.in https://www.nseindia.com https://generativelanguage.googleapis.com https://*.firebaseapp.com https://*.googleapis.com https://*.firebaseio.com;"
     };
 }
 
@@ -436,29 +454,29 @@ export function validateEnvironment(): { valid: boolean; missing: string[] } {
     const required = [
         'MONGO_URL',
         'GEMINI_API_KEY',
-        'SCREENER_EMAIL',
-        'SCREENER_PASSWORD'
+        'O_EMAIL',
+        'O_PASSWORD'
     ];
-    
+
     const missing: string[] = [];
-    
+
     for (const key of required) {
         if (!process.env[key]) {
             missing.push(key);
         }
     }
-    
+
     if (missing.length > 0) {
         console.error('❌ [Security] Missing required environment variables:', missing);
         return { valid: false, missing };
     }
-    
+
     // Validate key formats (basic checks)
-    if (process.env.MONGODB_URI && !process.env.MONGODB_URI.startsWith('mongodb')) {
+    if (process.env.MONGO_URL && !process.env.MONGO_URL.startsWith('mongodb')) {
         console.error('❌ [Security] Invalid MONGODB_URI format');
         return { valid: false, missing: ['MONGODB_URI (invalid format)'] };
     }
-    
+
     console.log('✅ [Security] Environment validation passed');
     return { valid: true, missing: [] };
 }

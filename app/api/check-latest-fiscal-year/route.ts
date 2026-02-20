@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import * as TOML from '@iarna/toml';
 import * as fs from 'fs';
 import * as path from 'path';
-import { fetchAnnualReportPDFLinks } from '../../utils/screenerScraper';
+import { fetchAnnualReportPDFLinks } from '../../utils/ORec';
 import { compareFiscalYears } from '../../utils/fiscalYearMapper';
 
 const CACHE_DIR = path.join(process.cwd(), '.cache', 'deep-analysis');

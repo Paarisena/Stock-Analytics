@@ -99,8 +99,8 @@ export default function StockCardWrapper({ query, onAlert }: StockCardWrapperPro
         
         const result = await response.json();
         
-        console.log('API Response:', result); // Debug log
-        console.log(`⏱️ Total Time: ${Date.now() - startTime}ms`);
+        console.log('API Response:', result);
+        console.log('AUDIT DEBUG:', JSON.stringify(result?.realtimeData?.annualReport?.auditInformation, null, 2));
         
         // Stage 4: Processing data
         if (!isAutoRefresh) {

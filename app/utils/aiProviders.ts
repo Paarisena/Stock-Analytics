@@ -134,7 +134,7 @@ export async function callGeminiSearch(
     const {
         model = 'gemini-2.5-flash',
         temperature = 0.2,
-        maxTokens = 10000,
+        maxTokens = 30000,
     } = options;
 
     try {
@@ -201,7 +201,7 @@ export async function callGeminiAPI<T = string>(
     const {
         model = 'gemini-2.5-flash',
         temperature = 0.2,
-        maxTokens = 10000,
+        maxTokens = 30000,
         parser
     } = options;
 
@@ -251,7 +251,7 @@ export async function callGeminiWithPDF(
     const {
         model = 'gemini-2.5-flash',
         temperature = 0.2,
-        maxTokens = 16000,
+        maxTokens = 30000,
     } = options;
 
     try {

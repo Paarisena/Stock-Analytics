@@ -1,6 +1,7 @@
 import { initializeApp, getApps } from 'firebase/app';
 import { getAuth, GoogleAuthProvider } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
+import { getRemoteConfig } from 'firebase/remote-config'; // Add this
 
 const firebaseConfig = {
   apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
@@ -12,11 +13,13 @@ const firebaseConfig = {
 };
 
 // Initialize Firebase (prevent multiple instances)
-const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
+export const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApps()[0];
 
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 export const db = getFirestore(app);
+export const remoteConfig = getRemoteConfig(app); // Add this
+export const Config = getRemoteConfig(app); // Initialize Remote Config
 
 // Configure Google provider
 googleProvider.setCustomParameters({

@@ -435,3 +435,5 @@ EarningsCallCacheSchema.index({ rawTranscript: 'text', 'data.summary': 'text' })
 // EXPORT AS NAMED EXPORT
 export const EarningsCallCache = mongoose.models.EarningsCallCache || 
     mongoose.model<IEarningsCallCache>('EarningsCallCache', EarningsCallCacheSchema);
+
+    

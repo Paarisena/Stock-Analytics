@@ -103,3 +103,9 @@ release/win-unpacked/locales/gu.pak
 release/win-unpacked/locales/he.pak
 release/win-unpacked/locales/hi.pak
 release/win-unpacked/locales/hr.pak
+ml-service/models/__pycache__/__init__.cpython-313.pyc
+ml-service/models/__pycache__/cache.cpython-313.pyc
+ml-service/models/__pycache__/ensemble.cpython-313.pyc
+ml-service/models/__pycache__/features.cpython-313.pyc
+ml-service/models/__pycache__/price_predictor.cpython-313.pyc
+ml-service/__pycache__/main.cpython-313.pyc

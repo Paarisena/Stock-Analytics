@@ -1,6 +1,7 @@
 import mongoose from 'mongoose';
 
 const PDFCacheSchema = new mongoose.Schema({
+    
     symbol: { type: String, required: true },
     fiscalYear: { type: String, required: true },
     content: { type: String, required: true },

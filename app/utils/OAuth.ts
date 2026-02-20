@@ -1,41 +1,41 @@
 /**
- * Screener.in Authentication Module
+ * O.in Authentication Module
  * Handles login and session management for authenticated data access
  * 
  * IMPORTANT: Personal use only, respects rate limits and ToS
  */
 
-interface ScreenerSession {
+interface OSession {
     cookies: string;
     expiresAt: number;
     userId?: string;
 }
 
 // In-memory session cache (24-hour validity)
-let cachedSession: ScreenerSession | null = null;
+let cachedSession: OSession | null = null;
 
 // Rate limiting: Track last request time
 let lastRequestTime = 0;
-const MIN_REQUEST_INTERVAL = 15000; // 15 seconds between requests
+const MIN_REQUEST_INTERVAL = 2000; // 2 seconds between requests
 
 /**
- * Login to screener.in and get authenticated session cookies
+ * Login to O.in and get authenticated session cookies
  */
-export async function loginToScreener(): Promise<string | null> {
+export async function loginToO(): Promise<string | null> {
     try {
-        const email = process.env.SCREENER_EMAIL;
-        const password = process.env.SCREENER_PASSWORD;
+        const email = process.env.O_EMAIL;
+        const password = process.env.O_PASSWORD;
 
         if (!email || !password) {
-            console.error('❌ [Screener Auth] Missing credentials in .env file');
-            console.log('📝 Add SCREENER_EMAIL and SCREENER_PASSWORD to your .env file');
+            console.error('❌ [O Auth] Missing credentials in .env file');
+            console.log('📝 Add O_EMAIL and O_PASSWORD to your .env file');
             return null;
         }
 
-        console.log(`🔐 [Screener Auth] Attempting login to screener.in...`);
+        console.log(`🔐 [O Auth] Attempting login to O.in...`);
 
         // Step 1: Get CSRF token from login page
-        const loginPageResponse = await fetch('https://www.screener.in/login/', {
+        const loginPageResponse = await fetch(`${process.env.O_URL}/login/`, {
             headers: {
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
             },
@@ -49,7 +49,7 @@ export async function loginToScreener(): Promise<string | null> {
         const sessionCookie = setCookieHeaders.find(cookie => cookie.includes('sessionid'));
         
         if (!csrfCookie) {
-            console.error('❌ [Screener Auth] Failed to get CSRF token');
+            console.error('❌ [O Auth] Failed to get CSRF token');
             return null;
         }
 
@@ -61,13 +61,13 @@ export async function loginToScreener(): Promise<string | null> {
         const formCsrfToken = csrfMatch ? csrfMatch[1] : csrfToken;
 
         // Step 2: Submit login form
-        const loginResponse = await fetch('https://www.screener.in/login/', {
+        const loginResponse = await fetch(`${process.env.O_URL}/login/`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/x-www-form-urlencoded',
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
                 'Cookie': `csrftoken=${csrfToken}${sessionCookie ? `; ${sessionCookie.split(';')[0]}` : ''}`,
-                'Referer': 'https://www.screener.in/login/',
+                'Referer': `${process.env.O_URL}/login/`,
             },
             body: `csrfmiddlewaretoken=${encodeURIComponent(formCsrfToken)}&username=${encodeURIComponent(email)}&password=${encodeURIComponent(password)}`,
             redirect: 'manual', // Don't follow redirects automatically
@@ -76,7 +76,7 @@ export async function loginToScreener(): Promise<string | null> {
         // Check if login was successful (redirect to home page)
         const location = loginResponse.headers.get('location');
         if (location !== '/' && loginResponse.status !== 302) {
-            console.error('❌ [Screener Auth] Login failed - Invalid credentials or CAPTCHA required');
+            console.error('❌ [O Auth] Login failed - Invalid credentials or CAPTCHA required');
             console.log('Status:', loginResponse.status);
             console.log('Location:', location);
             return null;
@@ -94,7 +94,7 @@ export async function loginToScreener(): Promise<string | null> {
             .join('; ');
 
         if (!cookieString) {
-            console.error('❌ [Screener Auth] No session cookies received');
+            console.error('❌ [O Auth] No session cookies received');
             return null;
         }
 
@@ -104,11 +104,11 @@ export async function loginToScreener(): Promise<string | null> {
             expiresAt: Date.now() + (24 * 60 * 60 * 1000), // 24 hours
         };
 
-        console.log('✅ [Screener Auth] Login successful! Session cached for 24 hours');
+        console.log('✅ Login successful! Session cached for 24 hours');
         return cookieString;
 
     } catch (error: any) {
-        console.error('❌ [Screener Auth] Login error:', error.message);
+        console.error('❌ [O Auth] Login error:', error.message);
         return null;
     }
 }
@@ -119,15 +119,15 @@ export async function loginToScreener(): Promise<string | null> {
 export async function getAuthenticatedSession(): Promise<string | null> {
     // Check if cached session is still valid
     if (cachedSession && cachedSession.expiresAt > Date.now()) {
-        console.log('📦 [Screener Auth] Using cached session');
+        console.log('📦 [ Auth] Using cached session');
         console.log(`🔍 [DEBUG] Session expires in ${Math.round((cachedSession.expiresAt - Date.now()) / 1000 / 60)} minutes`);
         return cachedSession.cookies;
     }
 
     // Session expired or doesn't exist - login again
-    console.log('🔄 [Screener Auth] Session expired or missing, logging in...');
+    console.log('🔄 [O Auth] Session expired or missing, logging in...');
     console.log(`🔍 [DEBUG] Cache status: exists=${!!cachedSession}, expired=${cachedSession ? cachedSession.expiresAt < Date.now() : 'N/A'}`);
-    return await loginToScreener();
+    return await loginToO();
 }
 
 /**
@@ -151,5 +151,5 @@ export async function waitForRateLimit(): Promise<void> {
  */
 export function clearSession(): void {
     cachedSession = null;
-    console.log('🗑️ [Screener Auth] Session cache cleared');
+    console.log('🗑️ [O Auth] Session cache cleared');
 }

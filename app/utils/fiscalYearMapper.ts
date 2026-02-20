@@ -73,7 +73,7 @@ export function getLatestFiscalYear(): string {
     // If we're in Apr-Dec, we're in the current FY
     // Example: Jan 2025 = FY2025 (Apr 2024 - Mar 2025)
     //          Apr 2025 = FY2026 (Apr 2025 - Mar 2026)
-    const fiscalYear = month >= 3 ? year + 1 : year;
+    const fiscalYear = month < 6 ? year - 1 : year;
     
     return `FY${fiscalYear}`;
 }

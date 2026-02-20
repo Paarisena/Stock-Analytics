@@ -40,13 +40,21 @@ export function useLivePrice({ symbol, initialPrice, isLive }: UseLivePriceProps
         const response = await fetch(`/api/live-price?symbol=${encodeURIComponent(symbol)}`);
         const apiData = await response.json();
         
+        // Check for API error response
+        if (apiData.error) {
+          console.error(`❌ [Live Price] API error for ${symbol}:`, apiData.error);
+          return;
+        }
+        
         if (apiData.price) {
           const newPrice = apiData.price;
           
-          // Track price direction
+          // Track price direction (compare with previous price)
           setIsPriceIncreasing(newPrice > previousPriceRef.current);
           setPriceChange(newPrice - initialPrice);
-          previousPriceRef.current = livePrice;
+          
+          // Update reference AFTER comparison but BEFORE state update
+          previousPriceRef.current = newPrice;
           
           setLivePrice(newPrice);
           setLastUpdate(new Date(apiData.timestamp));
@@ -61,10 +69,12 @@ export function useLivePrice({ symbol, initialPrice, isLive }: UseLivePriceProps
           // Update market state from API
           setMarketState(apiData.marketState || 'REGULAR');
           
-          console.log(`💰 [Live Price] ${symbol}: ${newPrice} (FREE Yahoo direct)`);
+          console.log(`💰 [Live Price] ${symbol}: ${newPrice} (${apiData.marketState})`);
+        } else {
+          console.warn(`⚠️ [Live Price] No price data returned for ${symbol}`);
         }
       } catch (error) {
-        console.error('❌ [Live Price] Failed:', error);
+        console.error(`❌ [Live Price] Fetch failed for ${symbol}:`, error);
       }
     };
     
@@ -73,10 +83,10 @@ export function useLivePrice({ symbol, initialPrice, isLive }: UseLivePriceProps
     
     // Then fetch every 3 seconds for active traders
     // 100% FREE - direct Yahoo Finance, no MCP wrapper, no Perplexity
-    const interval = setInterval(fetchLivePrice, 3000);
+    const interval = setInterval(fetchLivePrice, 1000);
     
     return () => clearInterval(interval);
-  }, [isLive, symbol, initialPrice, livePrice]);
+  }, [isLive, symbol, initialPrice]); // Removed livePrice to prevent infinite intervals
 
   // Initial volume setup
   useEffect(() => {

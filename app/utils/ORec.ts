@@ -1,12 +1,12 @@
 /**
- * Screener.in Data Scraper Module
+ * O.in Data Scraper Module
  * Fetches quarterly transcripts and annual reports from authenticated session
  * 
  * IMPORTANT: Personal use only, respects rate limits and ToS
  */
 
 import { load } from 'cheerio';
-import { getAuthenticatedSession, waitForRateLimit, clearSession } from './screenerAuth';
+import { getAuthenticatedSession, waitForRateLimit, clearSession } from './OAuth';
 import { downloadAndParsePDF } from './pdfParser';
 import { extractTextFromPDF } from './geminiVision';
 import { pdfTextCache } from './cache';
@@ -15,20 +15,20 @@ import { waitForBSERequest } from './rateLimiter';
 import * as fs from 'fs';
 import * as path from 'path';
 
-export interface ScreenerTranscript {
+export interface OTranscript {
     [x: string]: string | undefined;
     quarter: string;
     date: string;
     content: string;
     url: string;
-    source: 'Screener.in Direct' | 'Screener.in Quarterly Table';
+    source: 'O.in Direct' | 'O.in Quarterly Table';
 }
 
-export interface ScreenerAnnualReport {
+export interface OAnnualReport {
     fiscalYear: string;
     content: string;
     url: string;
-    source: 'Screener.in Direct' | 'BSE PDF' | 'BSE PDF (OCR)' | 'Screener.in Concalls (Cached)';
+    source: 'O.in Direct' | 'BSE PDF' | 'BSE PDF (OCR)' | 'O.in Concalls (Cached)';
 }
 
 export interface AnnualReportPDFLink {
@@ -38,18 +38,18 @@ export interface AnnualReportPDFLink {
 }
 
 /**
- * Fetch quarterly earnings transcript from screener.in
+ * Fetch quarterly earnings transcript from O.in
  * Extracts structured data directly from quarterly results table (no PDF parsing)
  */
-export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerTranscript | null> {
+export async function fetchOTranscript(symbol: string): Promise<OTranscript | null> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
-        console.log(`📄 [Screener] Fetching quarterly results table for ${cleanSymbol}...`);
+        console.log(`📄 [O.in] Fetching quarterly results table for ${cleanSymbol}...`);
 
         // Get authenticated session
         const cookies = await getAuthenticatedSession();
         if (!cookies) {
-            console.error('❌ [Screener] Authentication failed');
+            console.error('❌ [O.in] Authentication failed');
             return null;
         }
 
@@ -57,7 +57,7 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         await waitForRateLimit();
 
         // Fetch company page
-        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/`;
+        const companyUrl = `${process.env.O_URL}/company/${cleanSymbol}/`;
         const response = await fetch(companyUrl, {
             headers: {
                 'Cookie': cookies,
@@ -66,9 +66,9 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         });
 
         if (!response.ok) {
-            console.error(`❌ [Screener] Failed to fetch ${companyUrl}: ${response.status}`);
+            console.error(`❌ [O.in] Failed to fetch ${companyUrl}: ${response.status}`);
             if (response.status === 403 || response.status === 401) {
-                console.log('🔄 [Screener] Session expired, clearing cache...');
+                console.log('🔄 [O.in] Session expired, clearing cache...');
                 clearSession();
             }
             return null;
@@ -80,7 +80,7 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         // ==========================================
         // FETCH CONSOLIDATED DATA
         // ==========================================
-        console.log(`📋 [Screener] Parsing quarterly results table...`);
+        console.log(`📋 [O.in] Parsing quarterly results table...`);
 
         // Check if we need to fetch consolidated view
         const pageText = $('section:contains("Quarterly Results")').text();
@@ -89,7 +89,7 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         if (isStandalonePage) {
             console.log(`🔀 [Switch] Page shows Standalone, fetching Consolidated...`);
             
-            const consolidatedUrl = `https://www.screener.in/company/${cleanSymbol}/consolidated/`;
+            const consolidatedUrl = `${process.env.O_URL}/company/${cleanSymbol}/consolidated/`;
             await waitForRateLimit();
             
             const consolidatedResponse = await fetch(consolidatedUrl, {
@@ -114,11 +114,11 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         const quarterlyTable = quarterlySection.find('.data-table').first();
 
         if (quarterlyTable.length === 0) {
-            console.error(`❌ [Screener] No quarterly results table found for ${cleanSymbol}`);
+            console.error(`❌ [O.in] No quarterly results table found for ${cleanSymbol}`);
             return null;
         }
 
-        console.log(`✅ [Screener] Found quarterly table, extracting data...`);
+        console.log(`✅ [O.in] Found quarterly table, extracting data...`);
         
         // Extract quarter headers (column names)
         const quarters: string[] = [];
@@ -130,12 +130,12 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
         });
         
         if (quarters.length === 0) {
-            console.warn(`⚠️ [Screener] No quarterly data found for ${cleanSymbol}`);
+            console.warn(`⚠️ [O.in] No quarterly data found for ${cleanSymbol}`);
             return null;
         }
         
-        console.log(`📅 [Screener] Found ${quarters.length} quarters:`, quarters);
-        console.log(`📅 [Screener] Latest quarter: ${quarters[quarters.length - 1]}`);
+        console.log(`📅 [O.in] Found ${quarters.length} quarters:`, quarters);
+        console.log(`📅 [O.in] Latest quarter: ${quarters[quarters.length - 1]}`);
         
         // Initialize data structure with arrays
         const tableData: { [key: string]: number[] } = {
@@ -295,7 +295,7 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
             }
         }, null, 2);
         
-        console.log(`✅ [Screener] Extracted CONSOLIDATED quarterly data for ${latestQuarter}`);
+        console.log(`✅ [O] Extracted CONSOLIDATED quarterly data for ${latestQuarter}`);
         console.log(`📊 [Growth Verification]:`);
         console.log(`   Revenue YoY: ${latestIndex >= 4 ? calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 4]) : 'N/A'}%`);
         console.log(`   Revenue QoQ: ${latestIndex >= 1 ? calculateGrowth(tableData.sales[latestIndex], tableData.sales[latestIndex - 1]) : 'N/A'}%`);
@@ -307,40 +307,40 @@ export async function fetchScreenerTranscript(symbol: string): Promise<ScreenerT
             date: new Date().toISOString().split('T')[0],
             content: content,
             url: companyUrl,
-            source: 'Screener.in Quarterly Table'
+            source: 'O.in Quarterly Table'
         };
         
     } catch (error: any) {
-        console.error(`❌ [Screener Transcript] Error:`, error.message);
+        console.error(`❌ [O Transcript] Error:`, error.message);
         return null;
     }
 }
 
 /**
- * Fetch annual report from screener.in
+ * Fetch annual report from O.in
  */
-export async function fetchScreenerAnnualReport(symbol: string): Promise<ScreenerAnnualReport | null> {
+export async function fetchOAnnualReport(symbol: string): Promise<OAnnualReport | null> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
-        console.log(`📊 [Screener] Fetching annual report for ${cleanSymbol}...`);
+        console.log(`📊 [O] Fetching annual report for ${cleanSymbol}...`);
 
-        // Try to fetch full PDF from BSE via Screener.in Documents section
-        console.log(`📄 [Screener] Attempting to fetch full annual report PDF from BSE...`);
+        // Try to fetch full PDF from BSE via O.in Documents section
+        console.log(`📄 [O] Attempting to fetch full annual report PDF from BSE...`);
         const latestFY = getLatestFiscalYear();
         const pdfReport = await fetchAnnualReportFromPDF(cleanSymbol, latestFY);
         
         if (pdfReport && pdfReport.content.length >= 30000) {
-            console.log(`✅ [Screener] Successfully fetched full annual report PDF (${pdfReport.content.length.toLocaleString()} chars)`);
+            console.log(`✅ [O] Successfully fetched full annual report PDF (${pdfReport.content.length.toLocaleString()} chars)`);
             return pdfReport;
         }
 
-        // Fallback: Scrape basic data from Screener.in main page if PDF fetch fails
-        console.log(`⚠️ [Screener] PDF fetch failed or too short, falling back to page scraping...`);
+        // Fallback: Scrape basic data from O.in main page if PDF fetch fails
+        console.log(`⚠️ [O] PDF fetch failed or too short, falling back to page scraping...`);
 
         // Get authenticated session
         const cookies = await getAuthenticatedSession();
         if (!cookies) {
-            console.error('❌ [Screener] Authentication failed');
+            console.error('❌ [O] Authentication failed');
             return null;
         }
 
@@ -348,7 +348,7 @@ export async function fetchScreenerAnnualReport(symbol: string): Promise<Screene
         await waitForRateLimit();
 
         // Fetch company page
-        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/`;
+        const companyUrl = `https://www.O.in/company/${cleanSymbol}/`;
         const response = await fetch(companyUrl, {
             headers: {
                 'Cookie': cookies,
@@ -357,7 +357,7 @@ export async function fetchScreenerAnnualReport(symbol: string): Promise<Screene
         });
 
         if (!response.ok) {
-            console.error(`❌ [Screener] Failed to fetch ${companyUrl}: ${response.status}`);
+            console.error(`❌ [O] Failed to fetch ${companyUrl}: ${response.status}`);
             return null;
         }
 
@@ -374,7 +374,7 @@ export async function fetchScreenerAnnualReport(symbol: string): Promise<Screene
         if (fyMatch) {
             const year = fyMatch[1].length === 2 ? `20${fyMatch[1]}` : fyMatch[1];
             fiscalYear = `FY${year}`;
-            console.log(`📅 [Screener] Detected fiscal year: ${fiscalYear}`);
+            console.log(`📅 [O] Detected fiscal year: ${fiscalYear}`);
         }
 
         // Section 1: Company Overview
@@ -452,38 +452,38 @@ export async function fetchScreenerAnnualReport(symbol: string): Promise<Screene
         });
 
         if (content.length < 500) {
-            console.warn(`⚠️ [Screener] Annual report content too short (${content.length} chars)`);
+            console.warn(`⚠️ [O] Annual report content too short (${content.length} chars)`);
             return null;
         }
 
-        console.log(`✅ [Screener] Fetched annual report summary from page (${content.length} chars)`);
+        console.log(`✅ [O] Fetched annual report summary from page (${content.length} chars)`);
 
         return {
             fiscalYear,
             content,
             url: companyUrl,
-            source: 'Screener.in Direct',
+            source: 'O.in Direct',
         };
 
     } catch (error: any) {
-        console.error(`❌ [Screener] Error fetching annual report:`, error.message);
+        console.error(`❌ [O] Error fetching annual report:`, error.message);
         return null;
     }
 }
 
 /**
- * Fetch annual report PDF links from screener.in
+ * Fetch annual report PDF links from O.in
  * Scrapes the "Annual reports" section for BSE India PDF links
  */
 export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualReportPDFLink[]> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
-        console.log(`🔗 [Screener] Fetching annual report links from Documents section for ${cleanSymbol}...`);
+        console.log(`🔗 [O] Fetching annual report links from Documents section for ${cleanSymbol}...`);
 
         // Get authenticated session
         const cookies = await getAuthenticatedSession();
         if (!cookies) {
-            console.error('❌ [Screener] Authentication failed');
+            console.error('❌ [O] Authentication failed');
             return [];
         }
 
@@ -491,7 +491,7 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
         await waitForRateLimit();
 
         // Fetch company page with Documents section
-        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/`;
+        const companyUrl = `${process.env.O_URL}/company/${cleanSymbol}/`;
         const response = await fetch(companyUrl, {
             headers: {
                 'Cookie': cookies,
@@ -500,7 +500,7 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
         });
 
         if (!response.ok) {
-            console.error(`❌ [Screener] Failed to fetch ${companyUrl}: ${response.status}`);
+            console.error(`❌ [O.in] Failed to fetch ${companyUrl}: ${response.status}`);
             return [];
         }
 
@@ -512,7 +512,7 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
         // Look specifically in the "Annual reports" section
         // The structure shows: "Financial Year 2025" with "from bse" label
         // These links redirect to BSE India website
-        console.log(`📋 [Screener] Searching for Annual Reports section...`);
+        console.log(`📋 [O.in] Searching for Annual Reports section...`);
         
         // Find all links that contain "Financial Year" and "from bse"
         $('a').each((i, elem) => {
@@ -526,7 +526,7 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
             const isFromBSE = fullText.toLowerCase().includes('from bse');
             
             // BSE links typically go to: https://www.bseindia.com/...
-            // Or Screener might have redirect URLs
+            // Or O might have redirect URLs
             const isBSELink = href.includes('bseindia.com') || 
                             href.includes('/stock-price/') || 
                             (href.includes('company') && isFromBSE);
@@ -534,12 +534,12 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
             if (yearMatch && isFromBSE) {
                 const fiscalYear = normalizeFiscalYear(yearMatch[1]);
                 
-                // If href doesn't directly point to BSE, it might be a Screener redirect
+                // If href doesn't directly point to BSE, it might be a O redirect
                 let bseUrl = href;
                 if (!href.includes('bseindia.com')) {
-                    // For relative URLs, make them absolute to Screener
-                    bseUrl = href.startsWith('http') ? href : `https://www.screener.in${href}`;
-                    console.log(`🔗 [Screener] Found Screener redirect link for ${fiscalYear}: ${bseUrl}`);
+                    // For relative URLs, make them absolute to O
+                    bseUrl = href.startsWith('http') ? href : `${process.env.O_URL}${href}`;
+                    console.log(`🔗 [O.in] Found O redirect link for ${fiscalYear}: ${bseUrl}`);
                 } else {
                     console.log(`🔗 [BSE Direct] Found direct BSE link for ${fiscalYear}: ${bseUrl.substring(0, 80)}...`);
                 }
@@ -547,7 +547,7 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
                 pdfLinks.push({
                     fiscalYear,
                     url: bseUrl,
-                    source: 'BSE India via Screener.in'
+                    source: 'BSE India via O.in'
                 });
             }
         });
@@ -555,13 +555,13 @@ export async function fetchAnnualReportPDFLinks(symbol: string): Promise<AnnualR
         // Sort by fiscal year (latest first)
         pdfLinks.sort((a, b) => compareFiscalYears(b.fiscalYear, a.fiscalYear));
 
-        console.log(`✅ [Screener] Found ${pdfLinks.length} annual report links:`, 
+        console.log(`✅ [O] Found ${pdfLinks.length} annual report links:`, 
             pdfLinks.map(link => `${link.fiscalYear} (${link.url.substring(0, 50)}...)`).join(', '));
         
         return pdfLinks;
 
     } catch (error: any) {
-        console.error(`❌ [Screener] Error fetching PDF links:`, error.message);
+        console.error(`❌ [O] Error fetching PDF links:`, error.message);
         return [];
     }
 }
@@ -574,19 +574,19 @@ export async function fetchAnnualReportFromPDF(
     symbol: string, 
     requestedFY: string, 
     forceRefresh: boolean = false
-): Promise<ScreenerAnnualReport | null> {
+): Promise<OAnnualReport | null> {
     try {
         const cleanSymbol = symbol.replace(/\.(NS|BO)$/, '');
         let normalizedFY = normalizeFiscalYear(requestedFY);
         
         console.log(`📄 [PDF] Fetching annual report for ${cleanSymbol} ${normalizedFY}${forceRefresh ? ' (force refresh)' : ''}...`);
 
-        // ✅ Check what's actually available on Screener FIRST
-        console.log(`🔍 [PDF] Checking latest available FY on Screener.in...`);
+        // ✅ Check what's actually available on O FIRST
+        console.log(`🔍 [PDF] Checking latest available FY on O.in...`);
         const { latestFiscalYear } = await checkAvailableDataVersions(symbol);
 
         if (latestFiscalYear) {
-            console.log(`📅 [PDF] Screener has ${latestFiscalYear}, requested ${normalizedFY}`);
+            console.log(`📅 [PDF] O has ${latestFiscalYear}, requested ${normalizedFY}`);
             normalizedFY = latestFiscalYear; // Use what's actually available
         } else {
             console.log(`⚠️ [PDF] Could not verify latest FY, using requested ${normalizedFY}`);
@@ -653,11 +653,11 @@ console.log(`🔍 [DEBUG] Found in MongoDB:`, cachedPDF ? `YES (${cachedPDF.cont
             
             console.log(`📥 [PDF] Trying ${selectedLink.fiscalYear} (${i + 1}/${Math.min(candidateLinks.length, 5)}) from ${selectedLink.source}...`);
 
-            // If URL is a Screener redirect, follow it to get the actual BSE PDF URL
+            // If URL is a O redirect, follow it to get the actual BSE PDF URL
             let actualPdfUrl = selectedLink.url;
             
-            if (selectedLink.url.includes('screener.in')) {
-                console.log(`🔀 [Redirect] Following Screener redirect to BSE...`);
+            if (selectedLink.url.includes('O.in')) {
+                console.log(`🔀 [Redirect] Following O redirect to BSE...`);
                 try {
                     const redirectResponse = await fetch(selectedLink.url, {
                         headers: {
@@ -757,7 +757,7 @@ console.log(`🔍 [DEBUG] Found in MongoDB:`, cachedPDF ? `YES (${cachedPDF.cont
 }
 
 /**
- * Fetch conference call transcript from Screener.in Documents section
+ * Fetch conference call transcript from O.in Documents section
  * Uses same pattern as annual report PDF fetching
  */
 export async function fetchConferenceCallTranscript(symbol: string): Promise<{
@@ -781,7 +781,7 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
         // Fetch company page to find transcript link
         await waitForRateLimit();
         
-        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/`;
+        const companyUrl = `${process.env.O_URL}/company/${cleanSymbol}/`;
         const response = await fetch(companyUrl, {
             headers: {
                 'Cookie': cookies,
@@ -808,7 +808,7 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
             
             // Look for link with text "Transcript"
             if (linkText.toLowerCase() === 'transcript' && href) {
-                transcriptUrl = href.startsWith('http') ? href : `https://www.screener.in${href}`;
+                transcriptUrl = href.startsWith('http') ? href : `${process.env.O_URL}${href}`;
                 
                 // Try to extract quarter info from surrounding text
                 const parentText = $(elem).parent().text();
@@ -836,7 +836,7 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
             fiscalYear,
             content: '', // Empty - will be extracted on-demand when user clicks "AI Summarize"
             url: transcriptUrl,
-            source: 'Screener.in Concalls'
+            source: 'O.in Concalls'
         };
         
         console.log('✅ [Concall] Returning transcript link:', {
@@ -857,7 +857,7 @@ export async function fetchConferenceCallTranscript(symbol: string): Promise<{
  * Fetch comprehensive company data (quarterly + annual + concall)
  */
 /**
- * Check if newer data is available on Screener.in without fetching full data
+ * Check if newer data is available on O.in without fetching full data
  * Returns latest available quarters and fiscal years
  */
 export async function checkAvailableDataVersions(symbol: string): Promise<{
@@ -875,7 +875,7 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
         await waitForRateLimit();
 
         // Quick fetch - just parse HTML to find latest versions
-        const companyUrl = `https://www.screener.in/company/${cleanSymbol}/consolidated/`;
+        const companyUrl = `${process.env.O_URL}/company/${cleanSymbol}/consolidated/`;
         const response = await fetch(companyUrl, {
             headers: {
                 'Cookie': cookies,
@@ -904,24 +904,22 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
         console.log(`📅 [Version Check] Found ${quarterHeaders.length} quarters, latest: ${latestQuarter}`);
 
         // 2. Extract latest fiscal year from annual reports section
-        let latestFiscalYear: string | null = null;
+       let latestFiscalYear: string | null = null;
 
-        // Try multiple selectors to find annual report links
-        $('a').each((i, elem) => {
-            const linkText = $(elem).text();
-            const parentText = $(elem).parent().text();
-            const fullText = linkText + ' ' + parentText;
-            
-            // Match "Financial Year 2025" OR "FY25" OR "FY'25"
-            const fyMatch = fullText.match(/Financial\s+Year\s+(\d{4})|FY\s*'?(\d{2,4})/i);
-            if (fyMatch) {
-                const year = fyMatch[1] || fyMatch[2];
-                const normalizedFY = year.length === 2 ? `FY20${year}` : `FY${year}`;
-                if (!latestFiscalYear || compareFiscalYears(normalizedFY, latestFiscalYear) > 0) {
-                    latestFiscalYear = normalizedFY;
-                }
-            }
-        });
+        const firstTableHeader = $('.data-table').first().find('th').last().text().trim();
+        console.log(`🔍 [Version Check] Annual FY - Table header: "${firstTableHeader}"`);
+
+        const fyMatch = firstTableHeader.match(/Mar[\s']*'?(\d{2})/i) || 
+                        firstTableHeader.match(/FY\s*'?(\d{2})/i) || 
+                        firstTableHeader.match(/FY\s*(20\d{2})/i);
+
+        if (fyMatch) {
+            const year = fyMatch[1].length === 2 ? `20${fyMatch[1]}` : fyMatch[1];
+            latestFiscalYear = `FY${year}`;
+            console.log(`✅ [Version Check] Latest annual FY from data table: ${latestFiscalYear}`);
+        } else {
+            console.warn(`⚠️ [Version Check] Could not extract FY from table header - no data available yet`);
+        }
 
         console.log(`📅 [Version Check] Extracted fiscal year: ${latestFiscalYear}`);
 
@@ -953,10 +951,17 @@ export async function checkAvailableDataVersions(symbol: string): Promise<{
     }
 }
 
-export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
+export async function fetchOComprehensiveData(
+    symbol: string,
+    options?: {
+        skipAnnual?: boolean;
+        skipQuarterly?: boolean;
+        skipEarnings?: boolean;
+    }
+): Promise<{
     [x: string]: any;
-    transcript: ScreenerTranscript | null;
-    annualReport: ScreenerAnnualReport | null;
+    transcript: OTranscript | null;
+    annualReport: OAnnualReport | null;
     concallTranscript?: {
         [x: string]: string;
         quarter: string;
@@ -965,10 +970,10 @@ export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
         source: string;
     } | null;
 }> {
-    console.log(`🔍 [Screener] Fetching comprehensive data for ${symbol}...`);
+    console.log(`🔍 [O] Fetching comprehensive data for ${symbol}...`);
 
-    const transcript = await fetchScreenerTranscript(symbol);
-    const annualReport = await fetchScreenerAnnualReport(symbol);
+    const transcript = await fetchOTranscript(symbol);
+    const annualReport = await fetchOAnnualReport(symbol);
     const concallTranscript = await fetchConferenceCallTranscript(symbol);
 
     const success = (transcript || annualReport || concallTranscript) ? '✅' : '⚠️';
@@ -984,37 +989,37 @@ export async function fetchScreenerComprehensiveData(symbol: string): Promise<{
 }
 
 /**
- * Fetch and parse fundamentals from Screener.in (authenticated)
+ * Fetch and parse fundamentals from O.in (authenticated)
  * Extracts: PE, ROE, margins, debt, cash flow from HTML tables
  * Returns: All values in crores with decimal ratios
  */
-export async function fetchScreenerFundamentals(symbol: string) {
+export async function fetchOFundamentals(symbol: string) {
     try {
-        console.log(`📊 [Screener Fundamentals] Fetching for ${symbol}...`);
+        console.log(`📊 [O Fundamentals] Fetching for ${symbol}...`);
         
         // Get authenticated session
         const session = await getAuthenticatedSession();
         if (!session) {
-            console.log(`⚠️ [Screener Fundamentals] No authenticated session available`);
+            console.log(`⚠️ [O Fundamentals] No authenticated session available`);
             return null;
         }
         
         // Rate limiting
         await waitForRateLimit();
         
-        const url = `https://www.screener.in/company/${symbol}/`;
-        console.log(`🔗 [Screener Fundamentals] Fetching: ${url}`);
+        const url = `${process.env.O_URL}/company/${symbol}/`;
+        console.log(`🔗 [O Fundamentals] Fetching: ${url}`);
         
         const response = await fetch(url, {
             headers: {
                 'Cookie': session,
                 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                'Referer': 'https://www.screener.in/',
+                'Referer': `${process.env.O_URL}/`,
             },
         });
         
         if (!response.ok) {
-            console.log(`⚠️ [Screener Fundamentals] HTTP ${response.status} for ${symbol}`);
+            console.log(`⚠️ [O Fundamentals] HTTP ${response.status} for ${symbol}`);
             return null;
         }
         
@@ -1068,7 +1073,7 @@ export async function fetchScreenerFundamentals(symbol: string) {
             fiiHolding: null,
             diiHolding: null,
             pledgedPercentage: null,
-            source: 'Screener.in Direct (Authenticated)'
+            source: 'O.in Direct (Authenticated)'
         };
         
         // Extract from top ratios section (updated selectors for new HTML structure)
@@ -1082,52 +1087,52 @@ export async function fetchScreenerFundamentals(symbol: string) {
                 const match = cleanText.match(/₹?\s*([\d,]+)\s*Cr/i);
                 if (match) {
                     fundamentals.marketCap = parseFloat(match[1].replace(/,/g, ''));
-                    console.log(`✅ [Screener] Market Cap: ${fundamentals.marketCap} Cr`);
+                    console.log(`✅ [O] Market Cap: ${fundamentals.marketCap} Cr`);
                 }
             } else if (cleanText.includes('Stock P/E') || (cleanText.includes('P/E') && !cleanText.includes('Book'))) {
                 // Format: "Stock P/E 23.5" - extract decimal number
                 const match = cleanText.match(/P\/E\s+([\d.]+)/i);
                 if (match) {
                     fundamentals.peRatio = parseFloat(match[1]);
-                    console.log(`✅ [Screener] PE Ratio: ${fundamentals.peRatio}`);
+                    console.log(`✅ [O] PE Ratio: ${fundamentals.peRatio}`);
                 }
             } else if (cleanText.includes('Book Value')) {
                 const match = cleanText.match(/₹\s*([\d,]+(?:\.\d+)?)/i);
                 if (match) {
                     fundamentals.bookValue = parseFloat(match[1].replace(/,/g, ''));
-                    console.log(`✅ [Screener] Book Value: ₹${fundamentals.bookValue}`);
+                    console.log(`✅ [O] Book Value: ₹${fundamentals.bookValue}`);
                 }
             } else if (cleanText.includes('Dividend Yield')) {
                 const match = cleanText.match(/([\d.]+)\s*%/i);
                 if (match) {
                     fundamentals.dividendYield = parseFloat(match[1]) / 100;
-                    console.log(`✅ [Screener] Dividend Yield: ${fundamentals.dividendYield * 100}%`);
+                    console.log(`✅ [O] Dividend Yield: ${fundamentals.dividendYield * 100}%`);
                 }
             } else if (cleanText.includes('Face Value')) {
                 const match = cleanText.match(/₹\s*([\d.]+)/i);
                 if (match) {
                     fundamentals.faceValue = parseFloat(match[1]);
-                    console.log(`✅ [Screener] Face Value: ₹${fundamentals.faceValue}`);
+                    console.log(`✅ [O] Face Value: ₹${fundamentals.faceValue}`);
                 }
             } else if (cleanText.includes('Debt to Equity') || cleanText.includes('Debt/Equity')) {
                 const match = cleanText.match(/([\d.]+)/);
                 if (match) {
                     fundamentals.debtToEquity = parseFloat(match[1]);
-                    console.log(`✅ [Screener] D/E: ${fundamentals.debtToEquity}`);
+                    console.log(`✅ [O] D/E: ${fundamentals.debtToEquity}`);
                 }
             } else if (cleanText.match(/^ROE\s/i)) {
                 // Format: "ROE 17.8 %" - extract percentage
                 const match = cleanText.match(/ROE\s+([\d.]+)/i);
                 if (match) {
                     fundamentals.roe = parseFloat(match[1]) / 100;
-                    console.log(`✅ [Screener] ROE: ${fundamentals.roe * 100}%`);
+                    console.log(`✅ [O] ROE: ${fundamentals.roe * 100}%`);
                 }
             } else if (cleanText.match(/^ROCE\s/i)) {
                 // Already extracted by ratios table, but backup
                 const match = cleanText.match(/ROCE\s+([\d.]+)/i);
                 if (match && !fundamentals.roce) {
                     fundamentals.roce = parseFloat(match[1]) / 100;
-                    console.log(`✅ [Screener] ROCE: ${fundamentals.roce * 100}%`);
+                    console.log(`✅ [O] ROCE: ${fundamentals.roce * 100}%`);
                 }
             }
         });
@@ -1292,19 +1297,19 @@ export async function fetchScreenerFundamentals(symbol: string) {
                               fundamentals.revenue || fundamentals.netProfit || fundamentals.operatingMargin;
         
         if (!hasUsefulData) {
-            console.log(`⚠️ [Screener Fundamentals] No metrics found for ${symbol}`);
+            console.log(`⚠️ [O Fundamentals] No metrics found for ${symbol}`);
             console.log(`🔍 [DEBUG] All extracted values:`, fundamentals);
             return null;
         }
         
-        console.log(`✅ [Screener Fundamentals] Extracted: PE=${fundamentals.peRatio}, ROE=${fundamentals.roe}, D/E=${fundamentals.debtToEquity}, Revenue=${fundamentals.revenue}Cr`);
+        console.log(`✅ [O Fundamentals] Extracted: PE=${fundamentals.peRatio}, ROE=${fundamentals.roe}, D/E=${fundamentals.debtToEquity}, Revenue=${fundamentals.revenue}Cr`);
         console.log(`📊 [DEBUG] Complete extraction:`, JSON.stringify(fundamentals, null, 2));
         console.log(`🔍 [DEBUG] Non-null fields extracted: ${Object.entries(fundamentals).filter(([k,v]) => v !== null).map(([k]) => k).join(', ')}`);
         
         return fundamentals;
         
     } catch (error: any) {
-        console.error(`❌ [Screener Fundamentals] Error for ${symbol}:`, error.message);
+        console.error(`❌ [O Fundamentals] Error for ${symbol}:`, error.message);
         return null;
     }
 }

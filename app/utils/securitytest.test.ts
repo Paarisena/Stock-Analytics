@@ -11,7 +11,7 @@ import {
 } from './security';
 
 import { downloadAndParsePDF } from './pdfParser';
-import {fetchScreenerTranscript,fetchScreenerAnnualReport,fetchAnnualReportPDFLinks,fetchAnnualReportFromPDF,fetchConferenceCallTranscript,checkAvailableDataVersions,fetchScreenerComprehensiveData} from './screenerScraper';
+import {fetchOTranscript,fetchOAnnualReport,fetchAnnualReportPDFLinks,fetchAnnualReportFromPDF,fetchConferenceCallTranscript,checkAvailableDataVersions,fetchOComprehensiveData} from './ORec';
 import { calculateTechnicalIndicators } from '../api/search/route';
 
 const seq = (len: number, start = 1, step = 1) => Array.from({ length: len }, (_, i) => start + i * step);
@@ -242,7 +242,7 @@ describe('Screener.in Scraper (Integration)', () => {
 
   describe('fetchScreenerTranscript', () => {
     it.skipIf(process.env.CI)('should fetch quarterly transcript', async () => {
-      const result = await fetchScreenerTranscript(testSymbol);
+      const result = await fetchOTranscript(testSymbol);
       
       if (result) {
         expect(result.quarter).toBeTruthy();
@@ -255,7 +255,7 @@ describe('Screener.in Scraper (Integration)', () => {
     }, 30000);
 
     it('should handle invalid symbols gracefully', async () => {
-      const result = await fetchScreenerTranscript('INVALID_SYMBOL_XYZ');
+      const result = await fetchOTranscript('INVALID_SYMBOL_XYZ');
       expect(result).toBeNull();
     }, 10000);
   });
@@ -293,9 +293,9 @@ describe('Screener.in Scraper (Integration)', () => {
     }, 30000);
   });
 
-describe('fetchScreenerAnnualReport', () => {
+describe('fetchOAnnualReport', () => {
   it.skipIf(process.env.CI)('should fetch annual report', async () => {
-    const report = await fetchScreenerAnnualReport(testSymbol);
+    const report = await fetchOAnnualReport(testSymbol);
     
     if (report) {
       expect(report.fiscalYear).toBeTruthy();
@@ -328,9 +328,9 @@ describe('fetchScreenerAnnualReport', () => {
     }, 30000);
   });
 
-describe('fetchScreenerComprehensiveData', () => {
+describe('fetchOComprehensiveData', () => {
   it.skipIf(process.env.CI)('should fetch comprehensive data', async () => {
-    const data = await fetchScreenerComprehensiveData(testSymbolWithSuffix);
+    const data = await fetchOComprehensiveData(testSymbolWithSuffix);
     
     // Check basic structure - data should exist
     expect(data).toBeTruthy();
@@ -357,20 +357,20 @@ describe('fetchScreenerComprehensiveData', () => {
   describe('Error Handling', () => {
     it('should handle network errors gracefully', async () => {
       // Test with a symbol that doesn't exist
-      const result = await fetchScreenerTranscript('ZZZZZ_NONEXISTENT');
+      const result = await fetchOTranscript('ZZZZZ_NONEXISTENT');
       expect(result).toBeNull();
     }, 10000);
 
     it.skipIf(process.env.CI)('should handle malformed responses', async () => {
       // Symbol with special characters that might break parsing
-      const result = await fetchScreenerTranscript('TEST@#$%');
+      const result = await fetchOTranscript('TEST@#$%');
       expect(result).toBeNull();
     }, 10000);
   });
 
   describe('Data Validation', () => {
     it.skipIf(process.env.CI)('should return properly structured transcript', async () => {
-      const result = await fetchScreenerTranscript(testSymbol);
+      const result = await fetchOTranscript(testSymbol);
       
       if (result) {
         expect(result).toMatchObject({
