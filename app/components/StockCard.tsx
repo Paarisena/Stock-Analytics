@@ -5,9 +5,10 @@ import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Rad
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import ComprehensiveReportCard from './ComprehensiveReportCard';
 import { callGeminiAPI } from '../utils/aiProviders';
-import AnnualReportAccordion from './AnnualReportAccordion';
 import TranscriptPDFViewer from './TranscriptPDFViewer';
 import LivePriceDisplay from './stock/LivePrice/LivePriceDisplay';
+import DeliveryVolume, { type DeliveryVolumeData } from './stock/DeliveryVolume';
+import FIIDIIFlow, { type FIIDIIData } from './stock/FIIDIIFlow';
 
 // Helper function to safely render balance sheet values
 const renderValue = (value: any, fallback?: any): string | number => {
@@ -181,6 +182,8 @@ interface StockData {
     diiHolding: number | null;
     pledgedPercentage: number | null;
   };
+  deliveryVolume?: DeliveryVolumeData | null;
+  fiidiiFlow?: FIIDIIData | null;
   transcriptAnalysis?: {
     quarter: string;
     year: number;
@@ -225,6 +228,43 @@ interface StockData {
   cacheAge?: number;
   fromCache?: boolean;
 
+  mlPredictions?: {
+    predictions: {
+      next_1d: { price: number; change_pct: number; confidence?: number[] };
+      next_5d: { price: number; change_pct: number; confidence?: number[] };
+      next_10d: { price: number; change_pct: number; confidence?: number[] };
+      next_30d: { price: number; change_pct: number; confidence?: number[] };
+    };
+    modelWeights: { lstm: number; rf: number; lr: number };
+    featuresUsed: { technical: number; fundamentals: number; sentiment: number; delivery?: number; fiidii?: number; total: number };
+    technicalSignals: {
+      rsi: number;
+      rsi_signal: string;
+      macd_signal: number;
+      macd_trend: string;
+      macd_value: number;
+    };
+    trainingTimeMs: number;
+    cached: boolean;
+    chartData?: { day: number; price: number; upper?: number; lower?: number; type: string }[];
+    modelPredictions?: { lstm: number[]; rf: number[]; lr: number[] };
+    sentiment?: {
+      score: number;
+      magnitude: number;
+      summary: string;
+      source: string;
+      headlines: string[];
+      articles: { title: string; publisher: string; publishedAt: string; link: string }[];
+    } | null;
+    hybridPredictions?: Record<string, {
+      price: number;
+      change_pct: number;
+      mlPrice: number;
+      geminiPrice: number;
+      adjustment: number;
+    }> | null;
+  } | null;
+
   quarterlyReport?: {
     quarter: string;
     keyMetrics?: any;
@@ -244,6 +284,17 @@ export default function StockCard({ data }: { data: StockData }) {
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<'RSI' | 'MACD' | 'MA'>('RSI');
   const [isLive, setIsLive] = useState(true);
   
+  // Chart layer toggles
+  const [chartLayers, setChartLayers] = useState({
+    historical: true,
+    aiPredicted: true,
+    mlPredicted: true,
+    mlConfidence: true,
+    lstm: false,
+    rf: false,
+    lr: false,
+  });
+
   // Prediction tracking state
   const [currentPrediction, setCurrentPrediction] = useState(data);
   const [previousPrediction, setPreviousPrediction] = useState<StockData | null>(null);
@@ -421,25 +472,9 @@ export default function StockCard({ data }: { data: StockData }) {
   const minValue = allPrices.length > 0 ? Math.min(...allPrices) * 0.98 : data.current.price * 0.95;
   const maxValue = allPrices.length > 0 ? Math.max(...allPrices) * 1.02 : data.current.price * 1.05;
 
-  // Safely convert any value to a displayable string
-  const safeString = (val: any): string => {
-    if (val === null || val === undefined) return '';
-    if (typeof val === 'string') return val;
-    if (typeof val === 'number' || typeof val === 'boolean') return String(val);
-    if (typeof val === 'object') {
-      // Handle objects like {name, assets, revenues, netProfit, netCashFlows, reason}
-      return Object.entries(val)
-        .filter(([, v]) => v !== null && v !== undefined && v !== '')
-        .map(([k, v]) => `${k}: ${v}`)
-        .join(' | ');
-    }
-    return String(val);
-  };
-
   // Parse bullet points to remove markdown
-  const parseBulletPoint = (text: any) => {
-    const str = safeString(text);
-    return str.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
+  const parseBulletPoint = (text: string) => {
+    return text.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
   };
 
     // Handle force refresh of annual report
@@ -559,33 +594,123 @@ export default function StockCard({ data }: { data: StockData }) {
         isLive={isLive}
       />
 
-      {/* Price Chart with Prediction */}
+      {/* ═══════════════════════════════════════════════ */}
+      {/* UNIFIED PRICE CHART — Live + AI + ML Ensemble  */}
+      {/* ═══════════════════════════════════════════════ */}
       <div className="relative mb-6 sm:mb-8">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
           <div className="flex items-center gap-2">
             <Activity size={18} className="text-cyan-400" />
-            <h4 className="text-sm sm:text-base font-semibold text-white">Price Movement & Forecast</h4>
+            <h4 className="text-sm sm:text-base font-semibold text-white">Price Movement & Prediction</h4>
             <div className="flex items-center gap-1 ml-2 px-2 py-0.5 bg-green-500/20 rounded-full">
               <div className="w-2 h-2 bg-green-400 rounded-full animate-pulse"></div>
               <span className="text-xs text-green-400 font-medium">Live</span>
             </div>
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <div className="w-3 h-0.5 bg-blue-500"></div>
-              <span className="text-gray-300">Historical</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <div className="w-3 h-0.5 bg-purple-500 opacity-60"></div>
-              <span className="text-gray-400">Predicted</span>
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-2 h-2 bg-orange-500 rounded-full"></div>
-              <span className="text-gray-400">Current Price</span>
-            </div>
+        </div>
+
+        {/* Layer Toggle Buttons */}
+        <div className="flex flex-wrap items-center gap-2 mb-3">
+          <button
+            onClick={() => setChartLayers(prev => ({ ...prev, historical: !prev.historical }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+              chartLayers.historical
+                ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
+                : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
+            }`}
+          >
+            <div className={`w-3 h-0.5 ${chartLayers.historical ? 'bg-blue-500' : 'bg-gray-600'}`}></div>
+            Historical
+          </button>
+
+          <button
+            onClick={() => setChartLayers(prev => ({ ...prev, aiPredicted: !prev.aiPredicted }))}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+              chartLayers.aiPredicted
+                ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
+            }`}
+          >
+            <div className={`w-3 h-0.5 ${chartLayers.aiPredicted ? 'bg-purple-500' : 'bg-gray-600'}`}></div>
+            AI Forecast
+          </button>
+
+          {data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0 && (
+            <>
+              <button
+                onClick={() => setChartLayers(prev => ({ ...prev, mlPredicted: !prev.mlPredicted }))}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                  chartLayers.mlPredicted
+                    ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
+                    : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
+                }`}
+              >
+                <div className={`w-3 h-0.5 ${chartLayers.mlPredicted ? 'bg-emerald-500' : 'bg-gray-600'}`}></div>
+                ML Ensemble
+              </button>
+
+              <button
+                onClick={() => setChartLayers(prev => ({ ...prev, mlConfidence: !prev.mlConfidence }))}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                  chartLayers.mlConfidence
+                    ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
+                    : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
+                }`}
+              >
+                <div className={`w-3 h-2 rounded-sm ${chartLayers.mlConfidence ? 'bg-emerald-500/30' : 'bg-gray-600/30'}`}></div>
+                Confidence
+              </button>
+            </>
+          )}
+
+          {data.mlPredictions?.modelPredictions && (
+            <>
+              <span className="text-gray-600 text-xs mx-1">|</span>
+              <button
+                onClick={() => setChartLayers(prev => ({ ...prev, lstm: !prev.lstm }))}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                  chartLayers.lstm
+                    ? 'bg-violet-500/20 border-violet-500/40 text-violet-300'
+                    : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${chartLayers.lstm ? 'bg-violet-400' : 'bg-gray-600'}`}></div>
+                LSTM
+              </button>
+              <button
+                onClick={() => setChartLayers(prev => ({ ...prev, rf: !prev.rf }))}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                  chartLayers.rf
+                    ? 'bg-green-500/20 border-green-500/40 text-green-300'
+                    : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${chartLayers.rf ? 'bg-green-400' : 'bg-gray-600'}`}></div>
+                RF
+              </button>
+              <button
+                onClick={() => setChartLayers(prev => ({ ...prev, lr: !prev.lr }))}
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                  chartLayers.lr
+                    ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+                    : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
+                }`}
+              >
+                <div className={`w-2 h-2 rounded-full ${chartLayers.lr ? 'bg-sky-400' : 'bg-gray-600'}`}></div>
+                LR
+              </button>
+            </>
+          )}
+
+          {/* Current Price Badge */}
+          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs bg-orange-500/10 border border-orange-500/30 text-orange-300 ml-auto">
+            <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
+            Current: {currencySymbol}{formatPrice(data.current.price, currency)}
           </div>
         </div>
-        <div className="bg-gray-800/40 rounded-xl p-4 border border-blue-500/20 relative">
+
+        {/* Unified Chart */}
+        <div className="bg-gray-800/40 rounded-xl p-4 border border-cyan-500/20 relative">
           {data.chartData.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-800/60 backdrop-blur-sm rounded-xl z-10">
               <div className="text-center">
@@ -594,128 +719,650 @@ export default function StockCard({ data }: { data: StockData }) {
               </div>
             </div>
           )}
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={data.chartData}>
-              <defs>
-                <linearGradient id="historicalGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.6}/>
-                  <stop offset="50%" stopColor="#3b82f6" stopOpacity={0.2}/>
-                  <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.05}/>
-                </linearGradient>
-                <linearGradient id="predictedGradient" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.4}/>
-                  <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.15}/>
-                  <stop offset="100%" stopColor="#4c1d95" stopOpacity={0.05}/>
-                </linearGradient>
-              </defs>
-              <XAxis 
-                dataKey="time" 
-                stroke="#6b7280" 
-                fontSize={11}
-                tickLine={false}
-                interval="preserveStartEnd"
-              />
-              <YAxis 
-                domain={[minValue, maxValue]}
-                stroke="#6b7280" 
-                fontSize={11}
-                tickLine={false}
-                width={65}
-                tickFormatter={(value) => `${currencySymbol}${formatPrice(value, currency)}`}
-              />
-              <Tooltip 
-                contentStyle={{ 
-                  backgroundColor: '#1f2937', 
-                  border: '1px solid #374151',
-                  borderRadius: '0.75rem',
-                  color: '#f3f4f6',
-                  padding: '8px 12px'
-                }}
-                formatter={(value: any, name: string | undefined, props: any) => {
-                  const type = props.payload.type === 'prediction' ? '(Forecast)' : '';
-                    return [`${currencySymbol}${formatPrice(value, currency)} ${type}`, 'Price'];
-                  }}
-                  labelFormatter={(label: any) => label ? `Time: ${label}` : 'Time: N/A'}
+
+          {(() => {
+            // ═══ Build unified chart data ═══
+            const unifiedData: any[] = [];
+
+            // Historical + AI forecast from data.chartData
+            data.chartData.forEach((point, idx) => {
+              unifiedData.push({
+                label: point.time,
+                sortKey: idx,
+                zone: point.type === 'historical' ? 'historical' : 'ai_forecast',
+                historical: point.type === 'historical' ? (point.current || undefined) : undefined,
+                aiPredicted: point.type === 'prediction' ? (point.predicted || undefined) : undefined,
+              });
+            });
+
+            // ML prediction data (future days only)
+            if (data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0) {
+              const mlFuturePoints = data.mlPredictions.chartData.filter((p: any) => p.day > 0);
+              const historicalCount = data.chartData.filter(d => d.type === 'historical').length;
+
+              mlFuturePoints.forEach((mlPoint: any, idx: number) => {
+                const targetIdx = historicalCount + idx;
+                if (targetIdx < unifiedData.length) {
+                  // Merge into existing AI forecast point
+                  unifiedData[targetIdx].mlPrice = mlPoint.price;
+                  unifiedData[targetIdx].mlUpper = mlPoint.upper;
+                  unifiedData[targetIdx].mlLower = mlPoint.lower;
+                } else {
+                  // Add new point beyond AI forecast range
+                  unifiedData.push({
+                    label: `+${mlPoint.day}d`,
+                    sortKey: targetIdx,
+                    zone: 'ml_forecast',
+                    mlPrice: mlPoint.price,
+                    mlUpper: mlPoint.upper,
+                    mlLower: mlPoint.lower,
+                  });
+                }
+              });
+
+              // Add individual model predictions as lines
+              if (data.mlPredictions.modelPredictions) {
+                const { lstm, rf, lr } = data.mlPredictions.modelPredictions;
+                // Map individual model arrays to the forecast data points
+                const periods = [1, 5, 10, 30]; // prediction days
+                const modelArrays = { lstm: lstm || [], rf: rf || [], lr: lr || [] };
+
+                // Spread model predictions across future points proportionally
+                Object.entries(modelArrays).forEach(([modelName, values]) => {
+                  if (!values || values.length === 0) return;
+                  values.forEach((val: number, vIdx: number) => {
+                    // Map each model prediction to a specific future point
+                    const dayTarget = periods[vIdx] || (vIdx + 1);
+                    const futureIdx = mlFuturePoints.findIndex((p: any) => p.day === dayTarget);
+                    if (futureIdx >= 0) {
+                      const targetIdx = historicalCount + futureIdx;
+                      if (targetIdx < unifiedData.length) {
+                        (unifiedData[targetIdx] as any)[`${modelName}Price`] = val;
+                      }
+                    }
+                  });
+                });
+              }
+            }
+
+            // Bridge: connect last historical to first prediction
+            const historicalPoints = unifiedData.filter(d => d.historical !== undefined);
+            if (historicalPoints.length > 0) {
+              const lastHist = historicalPoints[historicalPoints.length - 1];
+              const lastHistVal = lastHist.historical;
+              // Set bridge values so lines connect
+              if (!lastHist.aiPredicted && unifiedData.some(d => d.aiPredicted !== undefined)) {
+                lastHist.aiPredicted = lastHistVal;
+              }
+              if (!lastHist.mlPrice && unifiedData.some(d => d.mlPrice !== undefined)) {
+                lastHist.mlPrice = lastHistVal;
+              }
+              if (!lastHist.lstmPrice && unifiedData.some(d => d.lstmPrice !== undefined)) {
+                lastHist.lstmPrice = lastHistVal;
+              }
+              if (!lastHist.rfPrice && unifiedData.some(d => d.rfPrice !== undefined)) {
+                lastHist.rfPrice = lastHistVal;
+              }
+              if (!lastHist.lrPrice && unifiedData.some(d => d.lrPrice !== undefined)) {
+                lastHist.lrPrice = lastHistVal;
+              }
+            }
+
+            // Y-axis domain from all values
+            const allVals = unifiedData.flatMap(d => [
+              d.historical, d.aiPredicted, d.mlPrice, d.mlUpper, d.mlLower,
+              d.lstmPrice, d.rfPrice, d.lrPrice
+            ].filter(v => v !== undefined && v !== null && !isNaN(v)));
+            const yMin = allVals.length > 0 ? Math.min(...allVals) * 0.97 : data.current.price * 0.95;
+            const yMax = allVals.length > 0 ? Math.max(...allVals) * 1.03 : data.current.price * 1.05;
+
+            return (
+              <ResponsiveContainer width="100%" height={320}>
+                <AreaChart data={unifiedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="unifiedHistGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#3b82f6" stopOpacity={0.5} />
+                      <stop offset="50%" stopColor="#3b82f6" stopOpacity={0.15} />
+                      <stop offset="100%" stopColor="#1e3a8a" stopOpacity={0.03} />
+                    </linearGradient>
+                    <linearGradient id="unifiedAIGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#8b5cf6" stopOpacity={0.35} />
+                      <stop offset="50%" stopColor="#8b5cf6" stopOpacity={0.1} />
+                      <stop offset="100%" stopColor="#4c1d95" stopOpacity={0.03} />
+                    </linearGradient>
+                    <linearGradient id="unifiedMLGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.35} />
+                      <stop offset="50%" stopColor="#10b981" stopOpacity={0.1} />
+                      <stop offset="100%" stopColor="#064e3b" stopOpacity={0.03} />
+                    </linearGradient>
+                    <linearGradient id="unifiedConfGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#10b981" stopOpacity={0.12} />
+                      <stop offset="100%" stopColor="#10b981" stopOpacity={0.02} />
+                    </linearGradient>
+                  </defs>
+
+                  <CartesianGrid strokeDasharray="3 3" stroke="#374151" opacity={0.3} />
+
+                  <XAxis
+                    dataKey="label"
+                    stroke="#6b7280"
+                    fontSize={10}
+                    tickLine={false}
+                    interval="preserveStartEnd"
                   />
-                  
-                  <ReferenceLine 
-                  y={data.current.price} 
-                  stroke="#f59e0b" 
-                  strokeDasharray="5 5"
-                  strokeWidth={2}
-                  label={{ 
-                    value: `Current: ${currencySymbol}${data.current.price.toFixed(2)}`, 
-                    fill: '#f59e0b', 
-                    fontSize: 11,
-                    fontWeight: 'bold',
-                    position: 'insideTopRight'
-                  }}
+                  <YAxis
+                    domain={[yMin, yMax]}
+                    stroke="#6b7280"
+                    fontSize={10}
+                    tickLine={false}
+                    width={65}
+                    tickFormatter={(v) => `${currencySymbol}${formatPrice(v, currency)}`}
                   />
-                  
-              {/* Historical Line */}
-              <Area 
-                type="monotone" 
-                dataKey="current"
-                stroke="#3b82f6"
-                strokeWidth={3}
-                fill="url(#historicalGradient)"
-                connectNulls
-                dot={(props: any) => {
-                  const { cx, cy, index, payload } = props;
-                  const historicalPoints = data.chartData.filter(d => d.type === 'historical');
-                  const isLatest = index === historicalPoints.length - 1;
-                  
-                  if (isLatest) {
-                    return (
-                      <g>
-                        {/* Outer pulsing ring */}
-                        <circle cx={cx} cy={cy} r={12} fill="#3b82f6" opacity={0.2}>
-                          <animate attributeName="r" from="8" to="16" dur="1.5s" repeatCount="indefinite" />
-                          <animate attributeName="opacity" from="0.4" to="0" dur="1.5s" repeatCount="indefinite" />
-                        </circle>
-                        {/* Middle ring */}
-                        <circle cx={cx} cy={cy} r={8} fill="#3b82f6" stroke="#1e40af" strokeWidth={2} />
-                        {/* Inner pulsing dot */}
-                        <circle cx={cx} cy={cy} r={4} fill="#60a5fa">
-                          <animate attributeName="r" from="3" to="5" dur="1s" repeatCount="indefinite" />
-                        </circle>
-                      </g>
-                    );
-                  }
-                  return <circle cx={cx} cy={cy} r={2.5} fill="#3b82f6" opacity={0.5} />;
-                }}
-                activeDot={{ r: 8, fill: '#3b82f6', stroke: '#1e40af', strokeWidth: 2 }}
-                isAnimationActive={true}
-                animationDuration={1000}
-                animationEasing="ease-in-out"
-              />
-              
-              {/* Predicted Line */}
-              <Area 
-                type="monotone" 
-                dataKey="predicted"
-                stroke="#8b5cf6"
-                strokeWidth={2.5}
-                strokeDasharray="8 4"
-                fill="url(#predictedGradient)"
-                connectNulls
-                dot={(props: any) => {
-                  const { cx, cy } = props;
-                  return (
-                    <g>
-                      <circle cx={cx} cy={cy} r={5} fill="#8b5cf6" opacity={0.3} />
-                      <circle cx={cx} cy={cy} r={3} fill="#a78bfa" />
-                    </g>
-                  );
-                }}
-                activeDot={{ r: 7, fill: '#8b5cf6', stroke: '#7c3aed', strokeWidth: 2 }}
-                isAnimationActive={true}
-                animationDuration={600}
-              />
-            </AreaChart>
-          </ResponsiveContainer>
+
+                  <Tooltip
+                    contentStyle={{
+                      backgroundColor: '#1f2937',
+                      border: '1px solid #374151',
+                      borderRadius: '0.75rem',
+                      color: '#f3f4f6',
+                      padding: '10px 14px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                    }}
+                    formatter={(value: any, name?: string) => {
+                      const labels: Record<string, string> = {
+                        historical: '📊 Historical',
+                        aiPredicted: '🔮 AI Forecast',
+                        mlPrice: '🤖 ML Ensemble',
+                        mlUpper: '📈 ML Upper',
+                        mlLower: '📉 ML Lower',
+                        lstmPrice: '🧠 LSTM',
+                        rfPrice: '🌳 Random Forest',
+                        lrPrice: '📏 Linear Reg.',
+                      };
+                      return [`${currencySymbol}${formatPrice(value, currency)}`, (name ? labels[name] : undefined) || name || ''];
+                    }}
+                  />
+
+                  {/* Current Price Reference Line */}
+                  <ReferenceLine
+                    y={data.current.price}
+                    stroke="#f59e0b"
+                    strokeDasharray="5 5"
+                    strokeWidth={1.5}
+                    label={{
+                      value: `Current: ${currencySymbol}${formatPrice(data.current.price, currency)}`,
+                      fill: '#f59e0b',
+                      fontSize: 10,
+                      fontWeight: 'bold',
+                      position: 'insideTopRight'
+                    }}
+                  />
+
+                  {/* ML Confidence Band - Upper */}
+                  {chartLayers.mlConfidence && (
+                    <Area
+                      type="monotone"
+                      dataKey="mlUpper"
+                      stroke="none"
+                      fill="url(#unifiedConfGrad)"
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* ML Confidence Band - Lower */}
+                  {chartLayers.mlConfidence && (
+                    <Area
+                      type="monotone"
+                      dataKey="mlLower"
+                      stroke="none"
+                      fill="transparent"
+                      connectNulls
+                      isAnimationActive={false}
+                    />
+                  )}
+
+                  {/* Historical Price Line */}
+                  {chartLayers.historical && (
+                    <Area
+                      type="monotone"
+                      dataKey="historical"
+                      stroke="#3b82f6"
+                      strokeWidth={2.5}
+                      fill="url(#unifiedHistGrad)"
+                      connectNulls
+                      dot={(props: any) => {
+                        const { cx, cy, index } = props;
+                        const histPts = unifiedData.filter(d => d.historical !== undefined);
+                        const isLast = unifiedData.indexOf(histPts[histPts.length - 1]) === index;
+                        if (isLast) {
+                          return (
+                            <g key={`hist-dot-${index}`}>
+                              <circle cx={cx} cy={cy} r={12} fill="#f59e0b" opacity={0.15}>
+                                <animate attributeName="r" from="8" to="16" dur="1.5s" repeatCount="indefinite" />
+                                <animate attributeName="opacity" from="0.3" to="0" dur="1.5s" repeatCount="indefinite" />
+                              </circle>
+                              <circle cx={cx} cy={cy} r={6} fill="#f59e0b" stroke="#fff" strokeWidth={2} />
+                              <circle cx={cx} cy={cy} r={3} fill="#fff" />
+                            </g>
+                          );
+                        }
+                        return <circle key={`hist-dot-${index}`} cx={cx} cy={cy} r={1.5} fill="#3b82f6" opacity={0.4} />;
+                      }}
+                      activeDot={{ r: 6, fill: '#3b82f6', stroke: '#1e40af', strokeWidth: 2 }}
+                      isAnimationActive={true}
+                      animationDuration={800}
+                    />
+                  )}
+
+                  {/* AI Forecast Line (dashed purple) */}
+                  {chartLayers.aiPredicted && (
+                    <Area
+                      type="monotone"
+                      dataKey="aiPredicted"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      strokeDasharray="8 4"
+                      fill="url(#unifiedAIGrad)"
+                      connectNulls
+                      dot={(props: any) => {
+                        const { cx, cy, index } = props;
+                        return <circle key={`ai-dot-${index}`} cx={cx} cy={cy} r={3} fill="#a78bfa" opacity={0.6} />;
+                      }}
+                      activeDot={{ r: 5, fill: '#8b5cf6', stroke: '#7c3aed', strokeWidth: 2 }}
+                      isAnimationActive={true}
+                      animationDuration={600}
+                    />
+                  )}
+
+                  {/* ML Ensemble Line (solid green) */}
+                  {chartLayers.mlPredicted && (
+                    <Area
+                      type="monotone"
+                      dataKey="mlPrice"
+                      stroke="#10b981"
+                      strokeWidth={2.5}
+                      fill="url(#unifiedMLGrad)"
+                      connectNulls
+                      dot={(props: any) => {
+                        const { cx, cy, index } = props;
+                        return <circle key={`ml-dot-${index}`} cx={cx} cy={cy} r={2.5} fill="#10b981" opacity={0.6} />;
+                      }}
+                      activeDot={{ r: 5, fill: '#10b981', stroke: '#065f46', strokeWidth: 2 }}
+                      isAnimationActive={true}
+                      animationDuration={700}
+                    />
+                  )}
+
+                  {/* Individual Model Lines (toggled off by default) */}
+                  {chartLayers.lstm && (
+                    <Line type="monotone" dataKey="lstmPrice" stroke="#c084fc" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                  )}
+                  {chartLayers.rf && (
+                    <Line type="monotone" dataKey="rfPrice" stroke="#4ade80" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                  )}
+                  {chartLayers.lr && (
+                    <Line type="monotone" dataKey="lrPrice" stroke="#38bdf8" strokeWidth={1.5} strokeDasharray="4 3" dot={false} connectNulls isAnimationActive={false} />
+                  )}
+                </AreaChart>
+              </ResponsiveContainer>
+            );
+          })()}
+
+          {/* Chart Source Labels */}
+          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-700/30 text-[10px] text-gray-500">
+            <span>📊 Historical: Yahoo Finance</span>
+            <span>🔮 AI Forecast: Gemini</span>
+            {data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0 && (
+              <>
+                <span>🤖 ML: LSTM ({((data.mlPredictions.modelWeights?.lstm || 0.5) * 100).toFixed(0)}%) + RF ({((data.mlPredictions.modelWeights?.rf || 0.3) * 100).toFixed(0)}%) + LR ({((data.mlPredictions.modelWeights?.lr || 0.2) * 100).toFixed(0)}%)</span>
+                <span>⚡ {data.mlPredictions.trainingTimeMs}ms</span>
+              </>
+            )}
+          </div>
         </div>
       </div>
+
+      {/* ═══════════════════════════════════════════════ */}
+      {/* DELIVERY VOLUME + FII/DII INSTITUTIONAL FLOWS  */}
+      {/* ═══════════════════════════════════════════════ */}
+      {(data.deliveryVolume || data.fiidiiFlow) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6 mb-6 sm:mb-8">
+          {data.deliveryVolume && (
+            <DeliveryVolume data={data.deliveryVolume} symbol={data.symbol} currencySymbol={currencySymbol} />
+          )}
+          {data.fiidiiFlow && (
+            <FIIDIIFlow data={data.fiidiiFlow} symbol={data.symbol} />
+          )}
+        </div>
+      )}
+
+      {/* ML Ensemble Price Predictions */}
+      {data.mlPredictions && data.mlPredictions.predictions && (
+        <motion.div
+          className="relative mb-6 sm:mb-8"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.15 }}
+        >
+          <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-emerald-900/30 via-teal-800/20 to-cyan-900/20 border border-emerald-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-emerald-500/10 backdrop-blur-sm hover:border-emerald-500/60 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
+
+            {/* Header */}
+            <h4 className="relative text-sm sm:text-base font-bold bg-gradient-to-r from-emerald-400 to-cyan-400 bg-clip-text text-transparent mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
+              <span className="flex items-center gap-2">
+                <span className="text-xl sm:text-2xl">🤖</span> ML Ensemble Price Prediction
+              </span>
+              <div className="flex items-center gap-2 sm:ml-auto">
+                {data.mlPredictions.cached && (
+                  <span className="text-xs px-2 py-1 rounded-full border bg-blue-500/20 border-blue-500/40 text-blue-300">
+                    📦 Cached
+                  </span>
+                )}
+                <span className="text-xs px-2 py-1 rounded-full border bg-emerald-500/20 border-emerald-500/40 text-emerald-300">
+                  ⚡ {data.mlPredictions.trainingTimeMs}ms
+                </span>
+              </div>
+            </h4>
+
+            {/* Model Weights Bar */}
+            <div className="relative mb-4">
+              <div className="flex flex-wrap items-center gap-2 mb-2">
+                {Object.entries(data.mlPredictions.modelWeights).map(([model, weight]) => (
+                  <span key={model} className="text-xs px-2.5 py-1 bg-gray-800/60 rounded-lg border border-gray-700/50 text-gray-300 flex items-center gap-1.5">
+                    <span className={`w-2 h-2 rounded-full ${
+                      model === 'lstm' ? 'bg-purple-400' : model === 'rf' ? 'bg-green-400' : 'bg-blue-400'
+                    }`}></span>
+                    <span className="uppercase font-semibold text-emerald-400">{model}</span>
+                    <span className="text-gray-500">{((weight as number) * 100).toFixed(0)}%</span>
+                  </span>
+                ))}
+                {data.mlPredictions.featuresUsed && (
+                  <span className="text-xs px-2 py-1 bg-gray-800/60 rounded-lg border border-gray-700/50 text-gray-400 sm:ml-auto">
+                    🧮 {data.mlPredictions.featuresUsed.total} features
+                    <span className="text-gray-600 ml-1">
+                      (T:{data.mlPredictions.featuresUsed.technical} F:{data.mlPredictions.featuresUsed.fundamentals} S:{data.mlPredictions.featuresUsed.sentiment}{data.mlPredictions.featuresUsed.delivery ? ` D:${data.mlPredictions.featuresUsed.delivery}` : ''}{data.mlPredictions.featuresUsed.fiidii ? ` I:${data.mlPredictions.featuresUsed.fiidii}` : ''})
+                    </span>
+                  </span>
+                )}
+              </div>
+              {/* Visual weight bar */}
+              <div className="flex h-1.5 rounded-full overflow-hidden bg-gray-800/60">
+                <div className="bg-purple-500" style={{ width: `${(data.mlPredictions.modelWeights.lstm) * 100}%` }}></div>
+                <div className="bg-green-500" style={{ width: `${(data.mlPredictions.modelWeights.rf) * 100}%` }}></div>
+                <div className="bg-blue-500" style={{ width: `${(data.mlPredictions.modelWeights.lr) * 100}%` }}></div>
+              </div>
+            </div>
+
+            {/* Prediction Cards */}
+            <div className="relative grid grid-cols-2 sm:grid-cols-4 gap-3 mb-5">
+              {Object.entries(data.mlPredictions.predictions).map(([key, pred]: [string, any]) => {
+                const label = key.replace('next_', '').replace('d', ' Day');
+                const hybrid = data.mlPredictions?.hybridPredictions?.[key];
+                const displayPrice = hybrid ? hybrid.price : pred.price;
+                const displayChange = hybrid ? hybrid.change_pct : pred.change_pct;
+                const isPositive = displayChange >= 0;
+                return (
+                  <div key={key} className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/50 hover:border-emerald-500/40 transition-all duration-300 group">
+                    <div className="text-xs text-gray-400 mb-1 font-medium">{label}</div>
+                    <div className="text-lg sm:text-xl font-bold text-white group-hover:text-emerald-300 transition-colors">
+                      {currencySymbol}{formatPrice(displayPrice, currency)}
+                    </div>
+                    <div className={`text-xs mt-1 font-semibold flex items-center gap-1 ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                      <span>{isPositive ? '↑' : '↓'}</span>
+                      <span>{Math.abs(displayChange).toFixed(2)}%</span>
+                    </div>
+                    {hybrid && hybrid.adjustment !== 0 && (
+                      <div className={`text-[10px] mt-1 flex items-center gap-1 ${hybrid.adjustment >= 0 ? 'text-cyan-400' : 'text-orange-400'}`}>
+                        <span>🧠</span>
+                        <span>{hybrid.adjustment >= 0 ? '+' : ''}{hybrid.adjustment.toFixed(2)}% sentiment</span>
+                      </div>
+                    )}
+                    {pred.confidence && (
+                      <div className="text-[10px] text-gray-500 mt-1">
+                        {currencySymbol}{formatPrice(pred.confidence[0], currency)} — {currencySymbol}{formatPrice(pred.confidence[1], currency)}
+                      </div>
+                    )}
+                    {hybrid && (
+                      <div className="text-[10px] text-gray-600 mt-0.5">
+                        ML: {currencySymbol}{formatPrice(hybrid.mlPrice, currency)} · AI: {currencySymbol}{formatPrice(hybrid.geminiPrice, currency)}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* News-Based Sentiment (Yahoo Finance + Gemini Scoring) */}
+            {data.mlPredictions.sentiment && (
+              <div className="relative bg-gray-800/40 rounded-xl p-4 border border-cyan-500/20 mb-4">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-3 gap-2">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="text-xs font-semibold text-cyan-300 flex items-center gap-1.5">
+                      📰 News Sentiment
+                    </div>
+                    <div className={`text-sm font-bold px-2.5 py-0.5 rounded-full border ${
+                      data.mlPredictions.sentiment.score > 0.3 ? 'bg-green-500/20 border-green-500/40 text-green-300' :
+                      data.mlPredictions.sentiment.score < -0.3 ? 'bg-red-500/20 border-red-500/40 text-red-300' :
+                      'bg-yellow-500/20 border-yellow-500/40 text-yellow-300'
+                    }`}>
+                      {data.mlPredictions.sentiment.score > 0.3 ? '📈 Bullish' :
+                       data.mlPredictions.sentiment.score < -0.3 ? '📉 Bearish' :
+                       '➡️ Neutral'}
+                      {' '}{(data.mlPredictions.sentiment.score >= 0 ? '+' : '')}{data.mlPredictions.sentiment.score.toFixed(2)}
+                    </div>
+                    <div className="text-xs text-gray-500">
+                      Conviction: {(data.mlPredictions.sentiment.magnitude * 100).toFixed(0)}%
+                    </div>
+                  </div>
+                  <span className="text-[10px] text-gray-600">
+                    {data.mlPredictions.sentiment.source === 'yahoo_news + gemini_scoring'
+                      ? 'Yahoo Finance → Gemini Scoring'
+                      : data.mlPredictions.sentiment.source}
+                  </span>
+                </div>
+                {/* Sentiment Gauge Bar */}
+                <div className="mb-3">
+                  <div className="relative h-2 bg-gray-700 rounded-full overflow-hidden">
+                    <div className="absolute inset-0 flex">
+                      <div className="w-1/2 bg-gradient-to-r from-red-500 via-yellow-500 to-transparent opacity-30"></div>
+                      <div className="w-1/2 bg-gradient-to-r from-transparent via-yellow-500 to-green-500 opacity-30"></div>
+                    </div>
+                    <div
+                      className="absolute top-1/2 -translate-y-1/2 w-3 h-3 rounded-full border-2 border-white shadow-lg transition-all duration-500"
+                      style={{
+                        left: `${((data.mlPredictions.sentiment.score + 1) / 2) * 100}%`,
+                        transform: 'translate(-50%, -50%)',
+                        backgroundColor: data.mlPredictions.sentiment.score > 0.3 ? '#22c55e' :
+                          data.mlPredictions.sentiment.score < -0.3 ? '#ef4444' : '#eab308'
+                      }}
+                    ></div>
+                  </div>
+                  <div className="flex justify-between text-[10px] text-gray-600 mt-1">
+                    <span>Bearish</span>
+                    <span>Neutral</span>
+                    <span>Bullish</span>
+                  </div>
+                </div>
+                {data.mlPredictions.sentiment.summary && (
+                  <p className="text-xs text-gray-400 italic mb-3 leading-relaxed">
+                    “{data.mlPredictions.sentiment.summary}”
+                  </p>
+                )}
+                {/* News Headlines Collapsible */}
+                {data.mlPredictions.sentiment.headlines && data.mlPredictions.sentiment.headlines.length > 0 && (
+                  <details className="group">
+                    <summary className="cursor-pointer text-xs text-cyan-400 hover:text-cyan-300 transition-colors flex items-center gap-1 select-none">
+                      <span className="group-open:rotate-90 transition-transform">&#9654;</span>
+                      {data.mlPredictions.sentiment.headlines.length} News Headlines (Yahoo Finance)
+                    </summary>
+                    <div className="mt-2 space-y-1.5 max-h-48 overflow-y-auto pr-1">
+                      {data.mlPredictions.sentiment.articles && data.mlPredictions.sentiment.articles.length > 0
+                        ? data.mlPredictions.sentiment.articles.map((article: { title: string; publisher: string; publishedAt: string; link: string }, idx: number) => (
+                            <a
+                              key={idx}
+                              href={article.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="block bg-gray-800/60 rounded-lg p-2.5 border border-gray-700/30 hover:border-cyan-500/40 transition-all group/article"
+                            >
+                              <div className="text-xs text-gray-200 group-hover/article:text-cyan-300 transition-colors leading-snug">
+                                {article.title}
+                              </div>
+                              <div className="flex items-center gap-2 mt-1">
+                                <span className="text-[10px] text-gray-500">{article.publisher}</span>
+                                <span className="text-[10px] text-gray-600">&bull;</span>
+                                <span className="text-[10px] text-gray-500">
+                                  {new Date(article.publishedAt).toLocaleDateString('en-US', {
+                                    month: 'short',
+                                    day: 'numeric',
+                                    hour: '2-digit',
+                                    minute: '2-digit'
+                                  })}
+                                </span>
+                              </div>
+                            </a>
+                          ))
+                        : data.mlPredictions.sentiment.headlines.map((headline: string, idx: number) => (
+                            <div
+                              key={idx}
+                              className="bg-gray-800/60 rounded-lg p-2 border border-gray-700/30 text-xs text-gray-300"
+                            >
+                              {headline}
+                            </div>
+                          ))
+                      }
+                    </div>
+                  </details>
+                )}
+
+                {/* Feeds into ML note */}
+                <div className="mt-3 pt-2 border-t border-gray-700/30">
+                  <div className="flex flex-wrap items-center gap-2 text-[10px] text-gray-600">
+                    <span>Sentiment feeds into RF ({((data.mlPredictions?.modelWeights?.rf || 0.3) * 100).toFixed(0)}%) + LR ({((data.mlPredictions?.modelWeights?.lr || 0.2) * 100).toFixed(0)}%) models</span>
+                    {data.mlPredictions.hybridPredictions && (
+                      <>
+                        <span>&middot;</span>
+                        <span className="text-emerald-500">Hybrid: 70% ML + 30% AI</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* ML Chart moved to unified chart above */}
+
+            {/* Technical Signals from ML */}
+            {data.mlPredictions.technicalSignals && (
+              <div className="relative bg-gray-800/40 rounded-xl p-4 border border-emerald-500/20">
+                <div className="text-xs font-semibold text-emerald-300 mb-3 flex items-center gap-2">
+                  📊 ML Technical Signals
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {/* RSI */}
+                  <div className="text-center bg-gray-800/40 rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">RSI (14)</div>
+                    <div className={`text-xl font-bold ${
+                      data.mlPredictions.technicalSignals.rsi > 70 ? 'text-red-400' :
+                      data.mlPredictions.technicalSignals.rsi < 30 ? 'text-green-400' :
+                      'text-yellow-400'
+                    }`}>
+                      {data.mlPredictions.technicalSignals.rsi.toFixed(1)}
+                    </div>
+                    <div className={`text-xs mt-0.5 font-medium ${
+                      data.mlPredictions.technicalSignals.rsi_signal === 'Overbought' ? 'text-red-400' :
+                      data.mlPredictions.technicalSignals.rsi_signal === 'Oversold' ? 'text-green-400' :
+                      'text-gray-400'
+                    }`}>
+                      {data.mlPredictions.technicalSignals.rsi_signal}
+                    </div>
+                    {/* RSI gauge bar */}
+                    <div className="mt-2 h-1.5 bg-gray-700 rounded-full overflow-hidden">
+                      <div
+                        className={`h-full rounded-full transition-all ${
+                          data.mlPredictions.technicalSignals.rsi > 70 ? 'bg-red-500' :
+                          data.mlPredictions.technicalSignals.rsi < 30 ? 'bg-green-500' :
+                          'bg-yellow-500'
+                        }`}
+                        style={{ width: `${Math.min(data.mlPredictions.technicalSignals.rsi, 100)}%` }}
+                      ></div>
+                    </div>
+                  </div>
+
+                  {/* MACD Trend */}
+                  <div className="text-center bg-gray-800/40 rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">MACD Trend</div>
+                    <div className={`text-xl font-bold ${
+                      data.mlPredictions.technicalSignals.macd_trend === 'Bullish' ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {data.mlPredictions.technicalSignals.macd_trend === 'Bullish' ? '📈' : '📉'} {data.mlPredictions.technicalSignals.macd_trend}
+                    </div>
+                  </div>
+
+                  {/* MACD Value */}
+                  <div className="text-center bg-gray-800/40 rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">MACD Value</div>
+                    <div className={`text-xl font-bold ${
+                      data.mlPredictions.technicalSignals.macd_value >= 0 ? 'text-green-400' : 'text-red-400'
+                    }`}>
+                      {data.mlPredictions.technicalSignals.macd_value.toFixed(2)}
+                    </div>
+                  </div>
+
+                  {/* MACD Signal */}
+                  <div className="text-center bg-gray-800/40 rounded-lg p-3">
+                    <div className="text-xs text-gray-400 mb-1">Signal Line</div>
+                    <div className="text-xl font-bold text-white">
+                      {data.mlPredictions.technicalSignals.macd_signal.toFixed(2)}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Model Comparison — Collapsible */}
+            {data.mlPredictions.modelPredictions && (
+              <details className="relative mt-4 bg-gray-800/30 rounded-xl p-4 border border-gray-700/40">
+                <summary className="cursor-pointer text-sm font-semibold text-emerald-300 flex items-center gap-2 select-none">
+                  🔬 Individual Model Predictions (30-day)
+                </summary>
+                <div className="mt-4 overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-gray-700/50">
+                        <th className="text-left text-gray-400 py-2 pr-3">Day</th>
+                        <th className="text-right text-purple-400 py-2 px-3">LSTM (50%)</th>
+                        <th className="text-right text-green-400 py-2 px-3">RF (30%)</th>
+                        <th className="text-right text-blue-400 py-2 px-3">LR (20%)</th>
+                        <th className="text-right text-emerald-400 py-2 pl-3">Ensemble</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[0, 4, 9, 14, 19, 24, 29].map((idx) => {
+                        if (idx >= (data.mlPredictions?.modelPredictions?.lstm?.length || 0)) return null;
+                        const lstm = data.mlPredictions!.modelPredictions!.lstm[idx];
+                        const rf = data.mlPredictions!.modelPredictions!.rf[idx];
+                        const lr = data.mlPredictions!.modelPredictions!.lr[idx];
+                        const ensemble = lstm * 0.5 + rf * 0.3 + lr * 0.2;
+                        return (
+                          <tr key={idx} className="border-b border-gray-800/50 hover:bg-gray-800/30">
+                            <td className="text-gray-400 py-2 pr-3">Day {idx + 1}</td>
+                            <td className="text-right text-purple-300 py-2 px-3">{currencySymbol}{formatPrice(lstm, currency)}</td>
+                            <td className="text-right text-green-300 py-2 px-3">{currencySymbol}{formatPrice(rf, currency)}</td>
+                            <td className="text-right text-blue-300 py-2 px-3">{currencySymbol}{formatPrice(lr, currency)}</td>
+                            <td className="text-right text-emerald-300 font-semibold py-2 pl-3">{currencySymbol}{formatPrice(ensemble, currency)}</td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </details>
+            )}
+          </div>
+        </motion.div>
+      )}
 
       {/* Trading Signal & Support/Resistance */}
       {currentPrediction.tradingSignal && currentPrediction.supportResistance && (
@@ -747,10 +1394,10 @@ export default function StockCard({ data }: { data: StockData }) {
               </div>
               <p className="text-sm sm:text-base text-gray-300 mb-3">{currentPrediction.tradingSignal.description}</p>
               <div className="text-xs sm:text-sm text-gray-400 space-y-2">
-                {currentPrediction.tradingSignal.reasons.map((reason: any, idx: number) => (
+                {currentPrediction.tradingSignal.reasons.map((reason, idx) => (
                   <div key={idx} className="flex items-start gap-2">
                     <span className="text-cyan-400 mt-0.5">•</span>
-                    <span>{safeString(reason)}</span>
+                    <span>{reason}</span>
                   </div>
                 ))}
               </div>
@@ -1102,10 +1749,10 @@ export default function StockCard({ data }: { data: StockData }) {
                 fontSize={11}
                 tickLine={false}
                 width={65}
-                tickFormatter={(value) => `${currencySymbol}${formatPrice(value, currency)}`}
+                tickFormatter={(v) => `${currencySymbol}${formatPrice(v, currency)}`}
               />
               <Tooltip 
-                contentStyle={{ 
+                contentStyle={{
                   backgroundColor: '#1f2937', 
                   border: '1px solid #374151',
                   borderRadius: '0.75rem',
@@ -1411,7 +2058,7 @@ export default function StockCard({ data }: { data: StockData }) {
       <div className="bg-gray-800/40 rounded-xl p-4 mb-6">
         <h4 className="text-sm font-semibold text-gray-300 mb-3">Key Insights</h4>
         <ul className="space-y-2">
-          {data.bulletPoints.map((point: any, index: number) => (
+          {data.bulletPoints.map((point, index) => (
             <li key={index} className="text-sm text-gray-300 flex items-start gap-2">
               <span className="text-green-400">•</span>
               <span>{parseBulletPoint(point)}</span>
@@ -1711,7 +2358,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.roe3Y && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Avg ROE (3Y)</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.roe3Y > 0.15 ? 'text-green-400' : data.fundamentals.roe3Y > 0.1 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.roe3Y > 0.15 ? 'text-green-400' : data.fundamentals.roe3Y > 0.1 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
                       {(data.fundamentals.roe3Y * 100).toFixed(1)}%
                     </div>
                   </div>
@@ -1719,7 +2368,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.roe5Y && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Avg ROE (5Y)</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.roe5Y > 0.15 ? 'text-green-400' : data.fundamentals.roe5Y > 0.1 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.roe5Y > 0.15 ? 'text-green-400' : data.fundamentals.roe5Y > 0.1 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
                       {(data.fundamentals.roe5Y * 100).toFixed(1)}%
                     </div>
                   </div>
@@ -1738,7 +2389,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.debtorDays && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Debtor Days</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.debtorDays < 45 ? 'text-green-400' : data.fundamentals.debtorDays < 90 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.debtorDays < 45 ? 'text-green-400' : data.fundamentals.debtorDays < 90 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
                       {data.fundamentals.debtorDays.toFixed(0)} days
                     </div>
                   </div>
@@ -1746,7 +2399,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.cashConversionCycle && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Cash Conversion Cycle</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.cashConversionCycle < 30 ? 'text-green-400' : data.fundamentals.cashConversionCycle < 60 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.cashConversionCycle < 30 ? 'text-green-400' : data.fundamentals.cashConversionCycle < 60 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
                       {data.fundamentals.cashConversionCycle.toFixed(0)} days
                     </div>
                   </div>
@@ -1773,7 +2428,8 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.promoterHolding && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Promoter Holding</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.promoterHolding > 0.5 ? 'text-green-400' : 'text-yellow-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.promoterHolding > 0.5 ? 'text-green-400' : 'text-yellow-400'}`}>
                       {(data.fundamentals.promoterHolding * 100).toFixed(2)}%
                     </div>
                   </div>
@@ -1797,7 +2453,9 @@ export default function StockCard({ data }: { data: StockData }) {
                 {data.fundamentals.pledgedPercentage !== null && data.fundamentals.pledgedPercentage !== undefined && (
                   <div className="bg-gray-800/40 rounded-lg p-3">
                     <div className="text-xs text-gray-400 mb-1">Pledged %</div>
-                    <div className={`text-lg font-bold ${data.fundamentals.pledgedPercentage === 0 ? 'text-green-400' : data.fundamentals.pledgedPercentage < 0.2 ? 'text-yellow-400' : 'text-red-400'}`}>
+                    <div className={`text-lg font-bold ${
+                      data.fundamentals.pledgedPercentage === 0 ? 'text-green-400' : data.fundamentals.pledgedPercentage < 0.2 ? 'text-yellow-400' : 'text-red-400'
+                    }`}>
                       {(data.fundamentals.pledgedPercentage * 100).toFixed(2)}%
                     </div>
                   </div>
@@ -1844,7 +2502,7 @@ export default function StockCard({ data }: { data: StockData }) {
             {data.annualReport.businessModel && (
               <div className="bg-blue-900/20 rounded-lg p-4 border border-blue-500/20">
                 <h4 className="text-lg font-semibold text-blue-300 mb-2 flex items-center gap-2">
-                  <span>💼</span> Business Model
+                  <span className="text-xl">💼</span> Business Model
                 </h4>
                 <p className="text-gray-300 text-sm leading-relaxed">
                   {data.annualReport.businessModel}
@@ -1856,7 +2514,7 @@ export default function StockCard({ data }: { data: StockData }) {
             {data.annualReport.futureStrategy && (
               <div className="bg-purple-900/20 rounded-lg p-4 border border-purple-500/20">
                 <h4 className="text-lg font-semibold text-purple-300 mb-2 flex items-center gap-2">
-                  <span>🚀</span> Future Strategy
+                  <span className="text-xl">🚀</span> Future Strategy
                 </h4>
                 <p className="text-gray-300 text-sm leading-relaxed">
                   {data.annualReport.futureStrategy}
@@ -1874,10 +2532,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <span>⚠️</span> Key Risks
                   </h4>
                   <ul className="space-y-2">
-                    {data.annualReport.keyRisks.map((risk: any, idx: number) => (
+                    {data.annualReport.keyRisks.map((risk: string, idx: number) => (
                       <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
                         <span className="text-red-400 mt-1">•</span>
-                        <span>{safeString(risk)}</span>
+                        <span>{risk}</span>
                       </li>
                     ))}
                   </ul>
@@ -1892,10 +2550,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <span>✨</span> Key Opportunities
                   </h4>
                   <ul className="space-y-2">
-                    {data.annualReport.keyOpportunities.map((opp: any, idx: number) => (
+                    {data.annualReport.keyOpportunities.map((opp: string, idx: number) => (
                       <li key={idx} className="text-gray-300 text-sm flex items-start gap-2">
                         <span className="text-emerald-400 mt-1">•</span>
-                        <span>{safeString(opp)}</span>
+                        <span>{opp}</span>
                       </li>
                     ))}
                   </ul>
@@ -2192,8 +2850,8 @@ export default function StockCard({ data }: { data: StockData }) {
                               <div className="mt-2 pt-2 border-t border-purple-500/20">
                                 <p className="text-xs text-slate-400 mb-2">Unaudited Components:</p>
                                 <ul className="list-disc list-inside space-y-1">
-                                  {data.annualReport.auditInformation.otherMatters.unauditedComponents.map((component: any, idx: number) => (
-                                    <li key={idx} className="text-sm">{safeString(component)}</li>
+                                  {data.annualReport.auditInformation.otherMatters.unauditedComponents.map((component: string, idx: number) => (
+                                    <li key={idx} className="text-sm">{component}</li>
                                   ))}
                                 </ul>
                               </div>
@@ -2517,9 +3175,9 @@ export default function StockCard({ data }: { data: StockData }) {
                             <div className="mt-3 pt-3 border-t border-slate-600/30">
                               <p className="text-xs text-slate-400 mb-2">Audit Firms:</p>
                               <div className="flex flex-wrap gap-2">
-                                {data.annualReport.auditInformation.consolidationScope.componentAuditors.firms.map((firm: any, idx: number) => (
+                                {data.annualReport.auditInformation.consolidationScope.componentAuditors.firms.map((firm: string, idx: number) => (
                                   <span key={idx} className="text-xs bg-cyan-500/20 px-3 py-1 rounded-full text-cyan-200 border border-cyan-500/30">
-                                    {safeString(firm)}
+                                    {firm}
                                   </span>
                                 ))}
                               </div>
@@ -3046,8 +3704,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-green-400 mb-2">✅ Highlights</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.businessHighlights.map((item: any, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
+                        {data.quarterlyReport.managementCommentary.businessHighlights.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
                         ))}
                       </ul>
                     </div>
@@ -3059,8 +3717,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-red-400 mb-2">⚠️ Challenges</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.challenges.map((item: any, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
+                        {data.quarterlyReport.managementCommentary.challenges.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
                         ))}
                       </ul>
                     </div>
@@ -3072,8 +3730,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <h5 className="text-sm font-semibold text-blue-400 mb-2">🚀 Opportunities</h5>
                       <ul className="space-y-1.5">
-                        {data.quarterlyReport.managementCommentary.opportunities.map((item: any, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {safeString(item)}</li>
+                        {data.quarterlyReport.managementCommentary.opportunities.map((item: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {item}</li>
                         ))}
                       </ul>
                     </div>
@@ -3086,8 +3744,8 @@ export default function StockCard({ data }: { data: StockData }) {
                       <div className="space-y-1.5 text-xs text-gray-300">
                         {/* Handle ARRAY format (from Screener quarterly data) */}
                         {Array.isArray(data.quarterlyReport.managementCommentary.futureGuidance) ? (
-                          data.quarterlyReport.managementCommentary.futureGuidance.map((item: any, idx: number) => (
-                            <div key={idx}>• {safeString(item)}</div>
+                          data.quarterlyReport.managementCommentary.futureGuidance.map((item: string, idx: number) => (
+                            <div key={idx}>• {item}</div>
                           ))
                         ) : (
                           /* Handle OBJECT format (from earnings call transcript) */
@@ -3127,7 +3785,7 @@ export default function StockCard({ data }: { data: StockData }) {
                         <h5 className="text-sm font-semibold text-white mb-2">{segment.segment}</h5>
                         {segment.growth && (
                           <span className={`text-xs px-2 py-1 rounded ${
-                            parseFloat(segment.growth) >= 0 ? 'bg-green-900/40 text-green-300' : 'bg-red-900/40 text-red-300'
+                            parseFloat(segment.growth) >= 0 ? 'bg-green-900/40 text-green-300 border border-green-500/30' : 'bg-red-900/40 text-red-300 border border-red-500/30'
                           }`}>
                             {segment.growth}
                           </span>
@@ -3180,10 +3838,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="mb-2">
                       <div className="text-xs text-gray-400 mb-1">Key Drivers:</div>
                       <ul className="mt-1 space-y-1">
-                        {data.quarterlyReport.outlook.keyDrivers.map((driver: any, idx: number) => (
+                        {data.quarterlyReport.outlook.keyDrivers.map((driver: string, idx: number) => (
                           <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
                             <span className="text-indigo-400">▸</span>
-                            <span>{safeString(driver)}</span>
+                            <span>{driver}</span>
                           </li>
                         ))}
                       </ul>
@@ -3194,10 +3852,10 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <div className="text-xs text-gray-400 mb-1">Risks:</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.outlook.risks.map((risk: any, idx: number) => (
+                        {data.quarterlyReport.outlook.risks.map((risk: string, idx: number) => (
                           <li key={idx} className="text-xs text-gray-300 flex items-start gap-1">
                             <span className="text-red-400">⚠</span>
-                            <span>{safeString(risk)}</span>
+                            <span>{risk}</span>
                           </li>
                         ))}
                       </ul>
@@ -3225,8 +3883,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div className="mb-3">
                       <div className="text-xs text-gray-400 mb-1">Competitive Advantages</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: any, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {safeString(advantage)}</li>
+                        {data.quarterlyReport.competitivePosition.competitiveAdvantages.map((advantage: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {advantage}</li>
                         ))}
                       </ul>
                     </div>
@@ -3237,8 +3895,8 @@ export default function StockCard({ data }: { data: StockData }) {
                     <div>
                       <div className="text-xs text-gray-400 mb-1">Industry Trends</div>
                       <ul className="space-y-1">
-                        {data.quarterlyReport.competitivePosition.industryTrends.map((trend: any, idx: number) => (
-                          <li key={idx} className="text-xs text-gray-300">• {safeString(trend)}</li>
+                        {data.quarterlyReport.competitivePosition.industryTrends.map((trend: string, idx: number) => (
+                          <li key={idx} className="text-xs text-gray-300">• {trend}</li>
                         ))}
                       </ul>
                     </div>

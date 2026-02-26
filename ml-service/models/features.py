@@ -1,11 +1,18 @@
 import numpy as np
 import pandas as pd
+from typing import Optional
 
 
-def compute_features(prices: list[float]) -> pd.DataFrame:
+def compute_features(
+    prices: list[float],
+    fundamentals: Optional[dict] = None,
+    sentiment: Optional[dict] = None,
+    delivery_data: Optional[dict] = None,
+    fiidii_data: Optional[dict] = None,
+) -> pd.DataFrame:
     """
-    Compute technical features from raw price series.
-    Input: list of close prices (oldest first).
+    Compute technical + fundamental + sentiment features from raw price series.
+    Input: list of close prices (oldest first), optional fundamentals & sentiment.
     Output: DataFrame with features aligned to price series.
     """
     df = pd.DataFrame({"close": prices})
@@ -67,15 +74,77 @@ def compute_features(prices: list[float]) -> pd.DataFrame:
     df["roc_5"] = df["close"].pct_change(5) * 100
     df["roc_10"] = df["close"].pct_change(10) * 100
 
+    # ── Fundamental Features (constant across all rows) ──
+    if fundamentals:
+        df["pe_ratio"] = _safe_float(fundamentals.get("peRatio"))
+        df["pb_ratio"] = _safe_float(fundamentals.get("priceToBook"))
+        df["debt_to_equity"] = _safe_float(fundamentals.get("debtToEquity"))
+        df["roe"] = _safe_float(fundamentals.get("roe"))
+        df["profit_margin"] = _safe_float(fundamentals.get("profitMargin"))
+        df["revenue_growth"] = _safe_float(fundamentals.get("revenueGrowth"))
+        df["operating_margin"] = _safe_float(fundamentals.get("operatingMargin"))
+        df["peg_ratio"] = _safe_float(fundamentals.get("pegRatio"))
+    else:
+        for col in _fundamental_columns():
+            df[col] = 0.0
+
+    # ── Sentiment Features (constant across all rows) ──
+    if sentiment:
+        df["sentiment_score"] = _safe_float(sentiment.get("score"), 0.0)
+        df["sentiment_magnitude"] = _safe_float(sentiment.get("magnitude"), 0.5)
+    else:
+        df["sentiment_score"] = 0.0
+        df["sentiment_magnitude"] = 0.5
+
+    # ── Delivery Volume Feature (stock-specific, from NSE Bhavcopy) ──
+    if delivery_data:
+        df["delivery_pct"] = _safe_float(delivery_data.get("deliveryPercent"), 50.0)
+        avg_del = _safe_float(delivery_data.get("avgDeliveryPercent"), 50.0)
+        df["delivery_vs_avg"] = (df["delivery_pct"] / (avg_del if avg_del > 0 else 50.0)) - 1.0
+    else:
+        df["delivery_pct"] = 50.0
+        df["delivery_vs_avg"] = 0.0
+
+    # ── FII/DII Flow Features (market-wide regime signal) ──
+    if fiidii_data:
+        fii_net = _safe_float(fiidii_data.get("fiiNet"), 0.0)
+        dii_net = _safe_float(fiidii_data.get("diiNet"), 0.0)
+        df["fii_net_flow"] = fii_net
+        df["dii_net_flow"] = dii_net
+        df["institutional_net"] = fii_net + dii_net
+    else:
+        df["fii_net_flow"] = 0.0
+        df["dii_net_flow"] = 0.0
+        df["institutional_net"] = 0.0
+
     # ── Target: next day return ──
     df["target"] = df["close"].shift(-1) / df["close"] - 1
 
     return df
 
 
+def _safe_float(val, default: float = 0.0) -> float:
+    """Safely convert a value to float, returning default if None/invalid."""
+    if val is None:
+        return default
+    try:
+        return float(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _fundamental_columns() -> list[str]:
+    """Fundamental feature column names."""
+    return [
+        "pe_ratio", "pb_ratio", "debt_to_equity", "roe",
+        "profit_margin", "revenue_growth", "operating_margin", "peg_ratio",
+    ]
+
+
 def get_feature_columns() -> list[str]:
     """Return the list of feature column names used for ML models."""
     return [
+        # Technical (20)
         "return_1d", "return_5d", "return_10d", "return_20d",
         "price_to_sma5", "price_to_sma20", "price_to_sma50",
         "volatility_10d", "volatility_20d",
@@ -83,4 +152,13 @@ def get_feature_columns() -> list[str]:
         "bb_position", "atr_14",
         "momentum_5", "momentum_10", "momentum_20",
         "roc_5", "roc_10",
+        # Fundamentals (8)
+        "pe_ratio", "pb_ratio", "debt_to_equity", "roe",
+        "profit_margin", "revenue_growth", "operating_margin", "peg_ratio",
+        # Sentiment (2)
+        "sentiment_score", "sentiment_magnitude",
+        # Delivery Volume (2)
+        "delivery_pct", "delivery_vs_avg",
+        # FII/DII Flows (3)
+        "fii_net_flow", "dii_net_flow", "institutional_net",
     ]

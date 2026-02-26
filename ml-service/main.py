@@ -40,6 +40,10 @@ class PricePredictionRequest(BaseModel):
     symbol: str
     historical_prices: list[float]
     current_price: float
+    fundamentals: dict | None = None
+    sentiment: dict | None = None
+    delivery_data: dict | None = None
+    fiidii_data: dict | None = None
 
     model_config = {
         "json_schema_extra": {
@@ -47,6 +51,8 @@ class PricePredictionRequest(BaseModel):
                 "symbol": "RELIANCE.NS",
                 "historical_prices": [1200.0] * 200,
                 "current_price": 1280.0,
+                "fundamentals": {"peRatio": 25.3, "roe": 0.15},
+                "sentiment": {"score": 0.6, "magnitude": 0.8},
             }]
         }
     }
@@ -96,6 +102,10 @@ async def predict_price(request: PricePredictionRequest):
             symbol=request.symbol,
             historical_prices=request.historical_prices,
             current_price=request.current_price,
+            fundamentals=request.fundamentals,
+            sentiment=request.sentiment,
+            delivery_data=request.delivery_data,
+            fiidii_data=request.fiidii_data,
         )
 
         training_time = int((time.time() - start_time) * 1000)

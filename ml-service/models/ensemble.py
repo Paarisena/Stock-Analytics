@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Optional
 from models.price_predictor import (
     LSTMPredictor,
     RandomForestPredictor,
@@ -10,6 +11,7 @@ from models.features import compute_features
 class EnsemblePredictor:
     """
     Ensemble: LSTM-like 50% + Random Forest 30% + Linear Regression 20%
+    Now uses fundamentals + sentiment features for RF and LR.
     """
 
     WEIGHTS = {"lstm": 0.5, "rf": 0.3, "lr": 0.2}
@@ -19,6 +21,10 @@ class EnsemblePredictor:
         symbol: str,
         historical_prices: list[float],
         current_price: float,
+        fundamentals: Optional[dict] = None,
+        sentiment: Optional[dict] = None,
+        delivery_data: Optional[dict] = None,
+        fiidii_data: Optional[dict] = None,
     ) -> dict:
         """
         Full prediction pipeline.
@@ -32,8 +38,8 @@ class EnsemblePredictor:
         lr = LinearRegressionPredictor()
 
         lstm.train(prices)
-        rf.train(prices)
-        lr.train(prices)
+        rf.train(prices, fundamentals=fundamentals, sentiment=sentiment, delivery_data=delivery_data, fiidii_data=fiidii_data)
+        lr.train(prices, fundamentals=fundamentals, sentiment=sentiment, delivery_data=delivery_data, fiidii_data=fiidii_data)
 
         # ── Predict 30 days ahead with each model ──
         days = 30
@@ -128,6 +134,14 @@ class EnsemblePredictor:
                 "macd_trend": macd_trend,
                 "macd_value": round(macd_val, 4),
                 "macd_signal": round(macd_sig, 4),
+            },
+            "features_used": {
+                "technical": 20,
+                "fundamentals": 8 if fundamentals else 0,
+                "sentiment": 2 if sentiment else 0,
+                "delivery": 2 if delivery_data else 0,
+                "fiidii": 3 if fiidii_data else 0,
+                "total": 20 + (8 if fundamentals else 0) + (2 if sentiment else 0) + (2 if delivery_data else 0) + (3 if fiidii_data else 0),
             },
         }
 
