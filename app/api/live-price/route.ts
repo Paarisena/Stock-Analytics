@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 function getMarketState(meta: any, symbol: string): string {
     // If Yahoo provides marketState, use it

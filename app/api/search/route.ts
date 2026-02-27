@@ -2,7 +2,7 @@
 import connectToDatabase from "@/DB/MongoDB";
 import {AnnualReportCache,QuarterlyReportCache,EarningsCallCache} from "@/DB/Model";
 import OpenAI from "openai";
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 import Groq from "groq-sdk";
 import { CacheManager } from '@/app/utils/cache';

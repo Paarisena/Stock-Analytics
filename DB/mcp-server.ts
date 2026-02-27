@@ -1,7 +1,7 @@
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema,ListToolsRequestSchema, } from "@modelcontextprotocol/sdk/types.js";
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 
 

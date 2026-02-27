@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { callGeminiWithPDF } from '@/app/utils/aiProviders';
 import connectToDatabase from '@/DB/MongoDB';
 import { EarningsCallCache } from '@/DB/Model';
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 export async function POST(request: NextRequest) {
   try {

@@ -6,7 +6,7 @@
 
 import PDFParser from 'pdf2json';
 import * as pdfParse from 'pdf-parse';
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 export interface PDFParseResult {
     text: string;

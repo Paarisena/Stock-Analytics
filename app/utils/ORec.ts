@@ -12,7 +12,7 @@ import { extractTextFromPDF } from './geminiVision';
 import { pdfTextCache } from './cache';
 import { normalizeFiscalYear, getLatestFiscalYear, compareFiscalYears } from './fiscalYearMapper';
 import { waitForBSERequest } from './rateLimiter';
-import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
+import '@/app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 import * as fs from 'fs';
 import * as path from 'path';
 
