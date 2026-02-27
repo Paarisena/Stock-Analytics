@@ -3,7 +3,7 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
-  output: 'standalone',
+  // output: 'standalone',
   turbopack: {},
   images: {
     unoptimized: true,
