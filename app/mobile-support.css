@@ -1,0 +1,146 @@
+/* Mobile Support CSS - Add to your global stylesheet */
+
+/* Line clamp utilities for mobile text truncation */
+@media (max-width: 768px) {
+  .line-clamp-2 {
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-3 {
+    display: -webkit-box;
+    -webkit-line-clamp: 3;
+    line-clamp: 3;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  
+  .line-clamp-4 {
+    display: -webkit-box;
+    -webkit-line-clamp: 4;
+    line-clamp: 4;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+}
+
+/* Touch-friendly interactions */
+.touch-manipulation {
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Better mobile scrolling */
+@media (max-width: 768px) {
+  .overflow-x-auto {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  
+  .overflow-x-auto::-webkit-scrollbar {
+    display: none;
+  }
+  
+  /* Ensure text inputs are responsive */
+  input, textarea, select, button {
+    -webkit-appearance: none;
+    appearance: none;
+    border-radius: 0;
+  }
+  
+  /* Better button spacing on mobile */
+  button {
+    min-height: 44px; /* Apple's recommended touch target */
+  }
+}
+
+/* Extra small screen support */
+@media (max-width: 375px) {
+  .xs\:flex-row {
+    flex-direction: row;
+  }
+  
+  .xs\:items-center {
+    align-items: center;
+  }
+  
+  .xs\:gap-2 {
+    gap: 0.5rem;
+  }
+  
+  .xs\:inline {
+    display: inline;
+  }
+  
+  .xs\:text-sm {
+    font-size: 0.875rem;
+  }
+}
+
+/* Custom mobile breakpoints */
+@media (max-width: 480px) {
+  .mobile\:text-xs {
+    font-size: 0.75rem;
+  }
+  
+  .mobile\:p-2 {
+    padding: 0.5rem;
+  }
+  
+  .mobile\:gap-1 {
+    gap: 0.25rem;
+  }
+  
+  .mobile\:grid-cols-1 {
+    grid-template-columns: repeat(1, minmax(0, 1fr));
+  }
+}
+
+/* Improved mobile viewport */
+@media (max-width: 768px) {
+  /* Better spacing for mobile viewports */
+  .container {
+    padding-left: 1rem;
+    padding-right: 1rem;
+  }
+  
+  /* Stack elements on mobile */
+  .mobile-stack {
+    flex-direction: column !important;
+  }
+  
+  /* Hide non-essential content on mobile */
+  .mobile-hidden {
+    display: none !important;
+  }
+  
+  /* Full width on mobile */
+  .mobile-full-width {
+    width: 100% !important;
+  }
+}
+
+/* Performance optimizations for mobile */
+@media (max-width: 768px) {
+  /* Reduce animation complexity on mobile */
+  .animate-pulse {
+    animation-duration: 3s;
+  }
+  
+  /* Simplify shadows on mobile */
+  .shadow-2xl {
+    box-shadow: 0 10px 25px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  }
+  
+  /* Reduce blur effects on mobile */
+  .backdrop-blur-2xl {
+    backdrop-filter: blur(8px);
+  }
+  
+  .backdrop-blur-xl {
+    backdrop-filter: blur(6px);
+  }
+}

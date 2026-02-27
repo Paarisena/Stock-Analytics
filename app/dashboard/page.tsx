@@ -22,6 +22,17 @@ export default function Dashboard() {
   const [selectedStock, setSelectedStock] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'detailed' | 'grid'>('detailed');
   const [alerts, setAlerts] = useState<any[]>([]);
+  const [isMobile, setIsMobile] = useState(false);
+
+  // Mobile detection
+  useEffect(() => {
+    const checkMobile = () => {
+      setIsMobile(window.innerWidth < 768);
+    };
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
 
   // Load watchlist from localStorage on mount
   useEffect(() => {
@@ -108,7 +119,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="flex h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900">
+    <div className={`${isMobile ? 'flex flex-col' : 'flex'} h-screen bg-gradient-to-br from-gray-900 via-blue-900 to-purple-900 ${isMobile ? 'relative' : ''}`}>
       {/* Sidebar */}
       <Sidebar
         watchlist={watchlist}
@@ -116,40 +127,41 @@ export default function Dashboard() {
         onSelectStock={setSelectedStock}
         onAddStock={addToWatchlist}
         onRemoveStock={removeFromWatchlist}
+        className={isMobile ? 'lg:relative' : ''}
       />
 
       {/* Main Content */}
-      <div className="flex-1 flex flex-col overflow-hidden">
+      <div className={`flex-1 flex flex-col overflow-hidden ${isMobile ? 'min-h-0' : ''}`}>
         {/* Header */}
-        <header className="bg-black/30 backdrop-blur-lg border-b border-white/10 p-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-3xl font-bold text-white">Stock Analysis Dashboard</h1>
-              <p className="text-gray-400 text-sm mt-1">
-                AI-Powered Analytics • Real-time Intelligence • Technical Analysis
+        <header className={`bg-black/30 backdrop-blur-lg border-b border-white/10 ${isMobile ? 'p-3 pt-16' : 'p-4'}`}>
+          <div className={`${isMobile ? 'flex flex-col gap-3' : 'flex items-center justify-between'}`}>
+            <div className={isMobile ? 'text-center' : ''}>
+              <h1 className={`${isMobile ? 'text-xl' : 'text-3xl'} font-bold text-white`}>Stock Analysis Dashboard</h1>
+              <p className={`text-gray-400 ${isMobile ? 'text-xs' : 'text-sm'} mt-1`}>
+                {isMobile ? 'AI Analytics • Real-time Intelligence' : 'AI-Powered Analytics • Real-time Intelligence • Technical Analysis'}
               </p>
             </div>
             
-            <div className="flex gap-2">
+            <div className={`flex ${isMobile ? 'flex-col gap-2' : 'gap-2'}`}>
               <button
                 onClick={() => setViewMode('detailed')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`${isMobile ? 'px-3 py-2.5 text-sm' : 'px-4 py-2'} rounded-lg font-medium transition-all touch-manipulation min-h-[44px] ${
                   viewMode === 'detailed'
                     ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    : 'bg-white/10 text-gray-300 hover:bg-white/20 active:bg-white/30'
                 }`}
               >
-                📊 Detailed View
+                📊 {isMobile ? 'Detailed' : 'Detailed View'}
               </button>
               <button
                 onClick={() => setViewMode('grid')}
-                className={`px-4 py-2 rounded-lg font-medium transition-all ${
+                className={`${isMobile ? 'px-3 py-2.5 text-sm' : 'px-4 py-2'} rounded-lg font-medium transition-all touch-manipulation min-h-[44px] ${
                   viewMode === 'grid'
                     ? 'bg-blue-600 text-white shadow-lg'
-                    : 'bg-white/10 text-gray-300 hover:bg-white/20'
+                    : 'bg-white/10 text-gray-300 hover:bg-white/20 active:bg-white/30'
                 }`}
               >
-                📈 Comparison Grid
+                📈 {isMobile ? 'Comparison' : 'Comparison Grid'}
               </button>
             </div>
           </div>
@@ -157,11 +169,13 @@ export default function Dashboard() {
 
         {/* Alert Panel */}
         {alerts.length > 0 && (
-          <AlertPanel alerts={alerts} onDismiss={dismissAlert} />
+          <div className={isMobile ? 'px-3' : ''}>
+            <AlertPanel alerts={alerts} onDismiss={dismissAlert} />
+          </div>
         )}
 
         {/* Content Area */}
-        <main className="flex-1 overflow-auto p-6">
+        <main className={`flex-1 overflow-auto ${isMobile ? 'p-3 pb-6' : 'p-6'} ${isMobile ? 'min-h-0' : ''}`}>
           {viewMode === 'detailed' ? (
             selectedStock ? (
               <StockCardWrapper 
@@ -171,9 +185,9 @@ export default function Dashboard() {
             ) : (
               <div className="flex items-center justify-center h-full">
                 <div className="text-center">
-                  <div className="text-6xl mb-4">📊</div>
-                  <h2 className="text-2xl font-bold text-white mb-2">No Stock Selected</h2>
-                  <p className="text-gray-400">Add stocks to your watchlist to get started</p>
+                  <div className={`${isMobile ? 'text-4xl mb-3' : 'text-6xl mb-4'}`}>📊</div>
+                  <h2 className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-white mb-2`}>No Stock Selected</h2>
+                  <p className={`text-gray-400 ${isMobile ? 'text-sm' : ''}`}>Add stocks to your watchlist to get started</p>
                 </div>
               </div>
             )

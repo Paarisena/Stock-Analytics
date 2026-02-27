@@ -1,7 +1,7 @@
 "use client";
 import { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
-import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Radio, Volume2, Clock, AlertTriangle,RefreshCw } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, IndianRupee, Coins, Activity, Radio, Volume2, Clock, AlertTriangle, RefreshCw, ChevronDown, ChevronUp, Eye, EyeOff } from 'lucide-react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine, LineChart, Line, CartesianGrid, Legend, BarChart, Bar } from 'recharts';
 import ComprehensiveReportCard from './ComprehensiveReportCard';
 import { callGeminiAPI } from '../utils/aiProviders';
@@ -284,6 +284,18 @@ export default function StockCard({ data }: { data: StockData }) {
   const [activeIndicatorTab, setActiveIndicatorTab] = useState<'RSI' | 'MACD' | 'MA'>('RSI');
   const [isLive, setIsLive] = useState(true);
   
+  // Mobile detection and responsive state
+  const [isMobile, setIsMobile] = useState(false);
+  const [expandedSections, setExpandedSections] = useState({
+    predictions: true,
+    mlPredictions: true,
+    technicalAnalysis: false,
+    fundamentals: false,
+    reports: false,
+    charts: true,
+    longTermChart: false
+  });
+  
   // Chart layer toggles
   const [chartLayers, setChartLayers] = useState({
     historical: true,
@@ -309,6 +321,38 @@ export default function StockCard({ data }: { data: StockData }) {
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isRefreshingReport, setIsRefreshingReport] = useState(false);
 
+  // Mobile detection effect
+  useEffect(() => {
+    const checkMobile = () => {
+      const mobile = window.innerWidth < 768;
+      setIsMobile(mobile);
+      
+      // Auto-collapse some sections on mobile for better UX
+      if (mobile) {
+        setExpandedSections(prev => ({
+          ...prev,
+          mlPredictions: false,
+          technicalAnalysis: false,
+          fundamentals: false,
+          reports: false,
+          longTermChart: false
+        }));
+        
+        // Disable resource-intensive chart layers on mobile
+        setChartLayers(prev => ({
+          ...prev,
+          mlConfidence: false,
+          lstm: false,
+          rf: false,
+          lr: false
+        }));
+      }
+    };
+    
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
   
   if (!data || !data.current || !data.shortTermPrediction || !data.longTermPrediction || !data.chartData || !data.longTermChartData) {
     return null;
@@ -352,19 +396,19 @@ export default function StockCard({ data }: { data: StockData }) {
       case 'CAD':
       case 'HKD':
       case 'SGD':
-        return <DollarSign size={24} className="text-green-400" />;
+        return <DollarSign size={isMobile ? 20 : 24} className="text-green-400" />;
       case 'INR':
-        return <IndianRupee size={24} className="text-green-400" />;
+        return <IndianRupee size={isMobile ? 20 : 24} className="text-green-400" />;
       case 'JPY':
       case 'CNY':
       case 'KRW':
-        return <span className="text-2xl font-bold text-green-400">¥</span>;
+        return <span className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-green-400`}>¥</span>;
       case 'EUR':
-        return <span className="text-2xl font-bold text-green-400">€</span>;
+        return <span className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-green-400`}>€</span>;
       case 'GBP':
-        return <span className="text-2xl font-bold text-green-400">£</span>;
+        return <span className={`${isMobile ? 'text-xl' : 'text-2xl'} font-bold text-green-400`}>£</span>;
       default:
-        return <Coins size={24} className="text-green-400" />;
+        return <Coins size={isMobile ? 20 : 24} className="text-green-400" />;
     }
   };
 
@@ -477,6 +521,14 @@ export default function StockCard({ data }: { data: StockData }) {
     return text.replace(/\*\*/g, '').replace(/📍|🔮|📊|💹|⏰|🏢|📅|📈|📉|➡️/g, '').trim();
   };
 
+  // Mobile helper functions
+  const toggleSection = (section: keyof typeof expandedSections) => {
+    setExpandedSections(prev => ({
+      ...prev,
+      [section]: !prev[section]
+    }));
+  };
+
     // Handle force refresh of annual report
   const handleRefreshAnnualReport = async () => {
     setIsRefreshingReport(true);
@@ -511,11 +563,11 @@ export default function StockCard({ data }: { data: StockData }) {
 
 
   return (
-    <div className="my-4 sm:my-6 lg:my-8 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-slate-700/50 shadow-2xl hover:border-cyan-500/30 transition-all duration-500 relative overflow-hidden">
-      {/* Animated background gradient */}
-      <div className="absolute inset-0 overflow-hidden pointer-events-none opacity-30">
-        <div className="absolute -top-20 -right-20 w-60 h-60 bg-cyan-500/20 rounded-full blur-3xl animate-pulse"></div>
-        <div className="absolute bottom-0 -left-20 w-60 h-60 bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-700"></div>
+    <div className={`${isMobile ? 'my-2 mx-2 p-3' : 'my-4 sm:my-6 lg:my-8'} ${isMobile ? 'p-3' : 'p-4 sm:p-6 lg:p-8'} bg-gradient-to-br from-slate-900/90 via-slate-800/90 to-slate-900/90 backdrop-blur-2xl rounded-2xl sm:rounded-3xl border border-slate-700/50 shadow-2xl hover:border-cyan-500/30 transition-all duration-500 relative overflow-hidden`}>
+      {/* Animated background gradient - simplified for mobile */}
+      <div className={`absolute inset-0 overflow-hidden pointer-events-none ${isMobile ? 'opacity-20' : 'opacity-30'}`}>
+        <div className={`absolute -top-20 -right-20 ${isMobile ? 'w-40 h-40' : 'w-60 h-60'} bg-cyan-500/20 rounded-full blur-3xl animate-pulse`}></div>
+        <div className={`absolute bottom-0 -left-20 ${isMobile ? 'w-40 h-40' : 'w-60 h-60'} bg-blue-500/20 rounded-full blur-3xl animate-pulse delay-700`}></div>
       </div>
       
       {/* Live Ticker Tape */}
@@ -525,13 +577,13 @@ export default function StockCard({ data }: { data: StockData }) {
         animate={{ x: 0, opacity: 1 }}
         transition={{ duration: 0.6, ease: "easeOut" }}
       >
-        <div className="flex flex-col sm:flex-row items-start sm:items-center gap-2 sm:gap-4 px-3 sm:px-4 py-2 sm:py-3">
+        <div className={`flex ${isMobile ? 'flex-col' : 'flex-col sm:flex-row'} items-start sm:items-center gap-2 sm:gap-4 ${isMobile ? 'px-2 py-2' : 'px-3 sm:px-4 py-2 sm:py-3'}`}>
           <div className="flex items-center gap-2">
             <Radio className={`w-4 h-4 ${isLive ? 'text-red-400 animate-pulse' : 'text-gray-500'}`} />
             <span className="text-xs font-bold text-cyan-300 tracking-wider">LIVE</span>
           </div>
           <div className="flex-1 w-full sm:w-auto">
-            <div className="grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4 text-xs text-gray-300">
+            <div className={`${isMobile ? 'grid grid-cols-2 gap-2' : 'grid grid-cols-2 sm:flex sm:items-center gap-2 sm:gap-4'} text-xs text-gray-300`}>
               <div className="flex items-center gap-1">
                 <span className="font-semibold text-cyan-400">Price:</span> 
                 <span className="text-white">{currencySymbol}{formatPrice(data.current.price, currency)}</span>
@@ -542,22 +594,28 @@ export default function StockCard({ data }: { data: StockData }) {
                   {data.current.change >= 0 ? '+' : ''}{currencySymbol}{Math.abs(data.current.change).toFixed(2)}
                 </span>
               </div>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold text-cyan-400">Prev Close:</span> 
-                <span className="text-white">{currencySymbol}{formatPrice(data.metadata.previousClose, currency)}</span>
-              </div>
-              <div className="flex items-center gap-1">
-                <span className="font-semibold text-cyan-400">Market:</span> 
-                <span className={data.current.marketState === 'REGULAR' ? 'text-green-400' : 'text-red-400'}>
-                  {data.current.marketState === 'REGULAR' ? '● OPEN' : '● CLOSED'}
-                </span>
-              </div>
+              {!isMobile && (
+                <>
+                  <div className="flex items-center gap-1">
+                    <span className="font-semibold text-cyan-400">Prev Close:</span> 
+                    <span className="text-white">{currencySymbol}{formatPrice(data.metadata.previousClose, currency)}</span>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    <span className="font-semibold text-cyan-400">Market:</span> 
+                    <span className={data.current.marketState === 'REGULAR' ? 'text-green-400' : 'text-red-400'}>
+                      {data.current.marketState === 'REGULAR' ? '● OPEN' : '● CLOSED'}
+                    </span>
+                  </div>
+                </>
+              )}
             </div>
           </div>
-          <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
-            <Clock className="w-3 h-3" />
-            <span>{new Date(data.metadata.timestamp).toLocaleTimeString()}</span>
-          </div>
+          {!isMobile && (
+            <div className="hidden sm:flex items-center gap-2 text-xs text-gray-400">
+              <Clock className="w-3 h-3" />
+              <span>{new Date(data.metadata.timestamp).toLocaleTimeString()}</span>
+            </div>
+          )}
         </div>
       </motion.div>
 
@@ -569,17 +627,17 @@ export default function StockCard({ data }: { data: StockData }) {
         animate="visible"
       >
         <div className="flex-1">
-          <div className="flex items-center gap-2 sm:gap-3 mb-2 flex-wrap">
-            <h3 className="text-2xl sm:text-3xl lg:text-4xl font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-teal-400 bg-clip-text text-transparent">{data.symbol}</h3>
-            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-sm ${data.current.change >= 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'}`}>
+          <div className={`flex ${isMobile ? 'flex-col gap-1' : 'items-center gap-2 sm:gap-3'} mb-2 ${isMobile ? '' : 'flex-wrap'}`}>
+            <h3 className={`${isMobile ? 'text-xl' : 'text-2xl sm:text-3xl lg:text-4xl'} font-bold bg-gradient-to-r from-cyan-400 via-blue-400 to-teal-400 bg-clip-text text-transparent`}>{data.symbol}</h3>
+            <div className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg backdrop-blur-sm ${data.current.change >= 0 ? 'bg-green-500/20 text-green-400 border border-green-500/30' : 'bg-red-500/20 text-red-400 border border-red-500/30'} ${isMobile ? 'w-fit' : ''}`}>
               {data.current.change >= 0 ? <TrendingUp size={18} className="animate-pulse" /> : <TrendingDown size={18} className="animate-pulse" />}
               <span className="text-xs sm:text-sm font-semibold">{data.current.change >= 0 ? '+' : ''}{data.current.changePercent.toFixed(2)}%</span>
             </div>
           </div>
           <p className="text-gray-400 text-sm sm:text-base">{data.metadata.exchange}</p>
         </div>
-        <div className="flex items-center gap-3">
-          <div className="p-3 sm:p-4 bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-2xl backdrop-blur-sm border border-cyan-500/30 hover:scale-110 transition-transform duration-300">
+        <div className={`flex items-center gap-3 ${isMobile ? 'mt-2' : ''}`}>
+          <div className={`${isMobile ? 'p-2' : 'p-3 sm:p-4'} bg-gradient-to-br from-cyan-600/20 to-blue-600/20 rounded-2xl backdrop-blur-sm border border-cyan-500/30 hover:scale-110 transition-transform duration-300`}>
             {getCurrencyIcon(currency)}
           </div>
         </div>
@@ -609,15 +667,15 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
 
-        {/* Layer Toggle Buttons */}
-        <div className="flex flex-wrap items-center gap-2 mb-3">
+        {/* Layer Toggle Buttons - Mobile responsive */}
+        <div className={`flex flex-wrap items-center gap-2 mb-3 ${isMobile ? 'gap-1.5' : ''}`}>
           <button
             onClick={() => setChartLayers(prev => ({ ...prev, historical: !prev.historical }))}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+            className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1 text-xs' : 'px-2.5 py-1 text-xs'} rounded-lg font-medium transition-all border touch-manipulation ${
               chartLayers.historical
                 ? 'bg-blue-500/20 border-blue-500/40 text-blue-300'
                 : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
-            }`}
+            } ${isMobile ? 'min-h-[32px]' : ''}`}
           >
             <div className={`w-3 h-0.5 ${chartLayers.historical ? 'bg-blue-500' : 'bg-gray-600'}`}></div>
             Historical
@@ -625,25 +683,25 @@ export default function StockCard({ data }: { data: StockData }) {
 
           <button
             onClick={() => setChartLayers(prev => ({ ...prev, aiPredicted: !prev.aiPredicted }))}
-            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+            className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1 text-xs' : 'px-2.5 py-1 text-xs'} rounded-lg font-medium transition-all border touch-manipulation ${
               chartLayers.aiPredicted
                 ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
                 : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
-            }`}
+            } ${isMobile ? 'min-h-[32px]' : ''}`}
           >
             <div className={`w-3 h-0.5 ${chartLayers.aiPredicted ? 'bg-purple-500' : 'bg-gray-600'}`}></div>
             AI Forecast
           </button>
 
-          {data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0 && (
+              {!isMobile && data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0 && (
             <>
               <button
                 onClick={() => setChartLayers(prev => ({ ...prev, mlPredicted: !prev.mlPredicted }))}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1 text-xs' : 'px-2.5 py-1 text-xs'} rounded-lg font-medium transition-all border touch-manipulation ${
                   chartLayers.mlPredicted
                     ? 'bg-emerald-500/20 border-emerald-500/40 text-emerald-300'
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
-                }`}
+                } ${isMobile ? 'min-h-[32px]' : ''}`}
               >
                 <div className={`w-3 h-0.5 ${chartLayers.mlPredicted ? 'bg-emerald-500' : 'bg-gray-600'}`}></div>
                 ML Ensemble
@@ -651,11 +709,11 @@ export default function StockCard({ data }: { data: StockData }) {
 
               <button
                 onClick={() => setChartLayers(prev => ({ ...prev, mlConfidence: !prev.mlConfidence }))}
-                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all border ${
+                className={`flex items-center gap-1.5 ${isMobile ? 'px-2 py-1 text-xs' : 'px-2.5 py-1 text-xs'} rounded-lg font-medium transition-all border touch-manipulation ${
                   chartLayers.mlConfidence
                     ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400'
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-500'
-                }`}
+                } ${isMobile ? 'min-h-[32px]' : ''}`}
               >
                 <div className={`w-3 h-2 rounded-sm ${chartLayers.mlConfidence ? 'bg-emerald-500/30' : 'bg-gray-600/30'}`}></div>
                 Confidence
@@ -663,38 +721,38 @@ export default function StockCard({ data }: { data: StockData }) {
             </>
           )}
 
-          {data.mlPredictions?.modelPredictions && (
+          {!isMobile && data.mlPredictions?.modelPredictions && (
             <>
               <span className="text-gray-600 text-xs mx-1">|</span>
               <button
                 onClick={() => setChartLayers(prev => ({ ...prev, lstm: !prev.lstm }))}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border touch-manipulation ${
                   chartLayers.lstm
                     ? 'bg-violet-500/20 border-violet-500/40 text-violet-300'
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
-                }`}
+                } min-h-[32px]`}
               >
                 <div className={`w-2 h-2 rounded-full ${chartLayers.lstm ? 'bg-violet-400' : 'bg-gray-600'}`}></div>
                 LSTM
               </button>
               <button
                 onClick={() => setChartLayers(prev => ({ ...prev, rf: !prev.rf }))}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border touch-manipulation ${
                   chartLayers.rf
                     ? 'bg-green-500/20 border-green-500/40 text-green-300'
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
-                }`}
+                } min-h-[32px]`}
               >
                 <div className={`w-2 h-2 rounded-full ${chartLayers.rf ? 'bg-green-400' : 'bg-gray-600'}`}></div>
                 RF
               </button>
               <button
                 onClick={() => setChartLayers(prev => ({ ...prev, lr: !prev.lr }))}
-                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border ${
+                className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-[10px] font-medium transition-all border touch-manipulation ${
                   chartLayers.lr
                     ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
                     : 'bg-gray-800/40 border-gray-700/40 text-gray-600'
-                }`}
+                } min-h-[32px]`}
               >
                 <div className={`w-2 h-2 rounded-full ${chartLayers.lr ? 'bg-sky-400' : 'bg-gray-600'}`}></div>
                 LR
@@ -703,14 +761,14 @@ export default function StockCard({ data }: { data: StockData }) {
           )}
 
           {/* Current Price Badge */}
-          <div className="flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs bg-orange-500/10 border border-orange-500/30 text-orange-300 ml-auto">
+          <div className={`flex items-center gap-1.5 px-2 py-1 rounded-lg text-xs bg-orange-500/10 border border-orange-500/30 text-orange-300 ${isMobile ? 'w-full justify-center mt-2' : 'ml-auto'}`}>
             <div className="w-2 h-2 bg-orange-500 rounded-full animate-pulse"></div>
             Current: {currencySymbol}{formatPrice(data.current.price, currency)}
           </div>
         </div>
 
-        {/* Unified Chart */}
-        <div className="bg-gray-800/40 rounded-xl p-4 border border-cyan-500/20 relative">
+        {/* Unified Chart - Mobile optimized */}
+        <div className={`bg-gray-800/40 rounded-xl ${isMobile ? 'p-3' : 'p-4'} border border-cyan-500/20 relative`}>
           {data.chartData.length === 0 && (
             <div className="absolute inset-0 flex items-center justify-center bg-gray-800/60 backdrop-blur-sm rounded-xl z-10">
               <div className="text-center">
@@ -817,7 +875,7 @@ export default function StockCard({ data }: { data: StockData }) {
             const yMax = allVals.length > 0 ? Math.max(...allVals) * 1.03 : data.current.price * 1.05;
 
             return (
-              <ResponsiveContainer width="100%" height={320}>
+              <ResponsiveContainer width="100%" height={isMobile ? 240 : 320}>
                 <AreaChart data={unifiedData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                   <defs>
                     <linearGradient id="unifiedHistGrad" x1="0" y1="0" x2="0" y2="1">
@@ -846,17 +904,21 @@ export default function StockCard({ data }: { data: StockData }) {
                   <XAxis
                     dataKey="label"
                     stroke="#6b7280"
-                    fontSize={10}
+                    fontSize={isMobile ? 8 : 10}
                     tickLine={false}
-                    interval="preserveStartEnd"
+                    interval={isMobile ? 'preserveStartEnd' : 'preserveStartEnd'}
+                    tick={{ fontSize: isMobile ? 8 : 10 }}
                   />
                   <YAxis
                     domain={[yMin, yMax]}
                     stroke="#6b7280"
-                    fontSize={10}
+                    fontSize={isMobile ? 8 : 10}
                     tickLine={false}
-                    width={65}
-                    tickFormatter={(v) => `${currencySymbol}${formatPrice(v, currency)}`}
+                    width={isMobile ? 45 : 65}
+                    tickFormatter={(v) => isMobile 
+                      ? `${formatPrice(v, currency)}` 
+                      : `${currencySymbol}${formatPrice(v, currency)}`
+                    }
                   />
 
                   <Tooltip
@@ -865,8 +927,9 @@ export default function StockCard({ data }: { data: StockData }) {
                       border: '1px solid #374151',
                       borderRadius: '0.75rem',
                       color: '#f3f4f6',
-                      padding: '10px 14px',
-                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)'
+                      padding: isMobile ? '6px 8px' : '10px 14px',
+                      boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+                      fontSize: isMobile ? '10px' : '12px'
                     }}
                     formatter={(value: any, name?: string) => {
                       const labels: Record<string, string> = {
@@ -947,7 +1010,7 @@ export default function StockCard({ data }: { data: StockData }) {
                             </g>
                           );
                         }
-                        return <circle key={`hist-dot-${index}`} cx={cx} cy={cy} r={1.5} fill="#3b82f6" opacity={0.4} />;
+                        return <circle key={`hist-dot-${index}`} cx={cx} cy={cy} r={isMobile ? 1 : 1.5} fill="#3b82f6" opacity={0.4} />;
                       }}
                       activeDot={{ r: 6, fill: '#3b82f6', stroke: '#1e40af', strokeWidth: 2 }}
                       isAnimationActive={true}
@@ -967,7 +1030,7 @@ export default function StockCard({ data }: { data: StockData }) {
                       connectNulls
                       dot={(props: any) => {
                         const { cx, cy, index } = props;
-                        return <circle key={`ai-dot-${index}`} cx={cx} cy={cy} r={3} fill="#a78bfa" opacity={0.6} />;
+                        return <circle key={`ai-dot-${index}`} cx={cx} cy={cy} r={isMobile ? 2 : 3} fill="#a78bfa" opacity={0.6} />;
                       }}
                       activeDot={{ r: 5, fill: '#8b5cf6', stroke: '#7c3aed', strokeWidth: 2 }}
                       isAnimationActive={true}
@@ -986,7 +1049,7 @@ export default function StockCard({ data }: { data: StockData }) {
                       connectNulls
                       dot={(props: any) => {
                         const { cx, cy, index } = props;
-                        return <circle key={`ml-dot-${index}`} cx={cx} cy={cy} r={2.5} fill="#10b981" opacity={0.6} />;
+                        return <circle key={`ml-dot-${index}`} cx={cx} cy={cy} r={isMobile ? 2 : 2.5} fill="#10b981" opacity={0.6} />;
                       }}
                       activeDot={{ r: 5, fill: '#10b981', stroke: '#065f46', strokeWidth: 2 }}
                       isAnimationActive={true}
@@ -1009,14 +1072,14 @@ export default function StockCard({ data }: { data: StockData }) {
             );
           })()}
 
-          {/* Chart Source Labels */}
-          <div className="flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-700/30 text-[10px] text-gray-500">
+          {/* Chart Source Labels - Mobile responsive */}
+          <div className={`flex flex-wrap items-center gap-3 mt-3 pt-3 border-t border-gray-700/30 text-[10px] text-gray-500 ${isMobile ? 'gap-2' : ''}`}>
             <span>📊 Historical: Yahoo Finance</span>
             <span>🔮 AI Forecast: Gemini</span>
             {data.mlPredictions?.chartData && data.mlPredictions.chartData.length > 0 && (
               <>
                 <span>🤖 ML: LSTM ({((data.mlPredictions.modelWeights?.lstm || 0.5) * 100).toFixed(0)}%) + RF ({((data.mlPredictions.modelWeights?.rf || 0.3) * 100).toFixed(0)}%) + LR ({((data.mlPredictions.modelWeights?.lr || 0.2) * 100).toFixed(0)}%)</span>
-                <span>⚡ {data.mlPredictions.trainingTimeMs}ms</span>
+                {!isMobile && <span>⚡ {data.mlPredictions.trainingTimeMs}ms</span>}
               </>
             )}
           </div>
@@ -1037,15 +1100,79 @@ export default function StockCard({ data }: { data: StockData }) {
         </div>
       )}
 
-      {/* ML Ensemble Price Predictions */}
+      {/* ML Ensemble Price Predictions - Mobile Collapsible */}
       {data.mlPredictions && data.mlPredictions.predictions && (
         <motion.div
-          className="relative mb-6 sm:mb-8"
+          className={`relative ${isMobile ? 'mb-4' : 'mb-6 sm:mb-8'}`}
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.15 }}
         >
-          <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-emerald-900/30 via-teal-800/20 to-cyan-900/20 border border-emerald-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-emerald-500/10 backdrop-blur-sm hover:border-emerald-500/60 transition-all duration-300">
+          {isMobile ? (
+            <div className="mb-4">
+              <button
+                onClick={() => toggleSection('mlPredictions')}
+                className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-emerald-900/30 to-teal-900/30 rounded-lg border border-emerald-500/40 mb-3 touch-manipulation min-h-[44px]"
+              >
+                <span className="font-semibold text-white flex items-center gap-2">
+                  <span className="text-xl">🤖</span>
+                  ML Predictions
+                  {data.mlPredictions.trainingTimeMs && (
+                    <span className="text-xs bg-emerald-500/20 px-2 py-0.5 rounded-full">
+                      {data.mlPredictions.trainingTimeMs}ms
+                    </span>
+                  )}
+                </span>
+                {expandedSections.mlPredictions ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              
+              {expandedSections.mlPredictions && (
+                <div className="p-4 bg-gradient-to-br from-emerald-900/30 via-teal-800/20 to-cyan-900/20 border border-emerald-500/40 rounded-xl shadow-xl backdrop-blur-sm">
+                  {/* Mobile-optimized ML predictions content */}
+                  <div className="grid grid-cols-2 gap-3 mb-4">
+                    {Object.entries(data.mlPredictions.predictions).slice(0, 4).map(([key, pred]: [string, any]) => {
+                      const label = key.replace('next_', '').replace('d', 'd');
+                      const hybrid = data.mlPredictions?.hybridPredictions?.[key];
+                      const displayPrice = hybrid ? hybrid.price : pred.price;
+                      const displayChange = hybrid ? hybrid.change_pct : pred.change_pct;
+                      const isPositive = displayChange >= 0;
+                      
+                      return (
+                        <div key={key} className="bg-gray-800/40 rounded-lg p-3 border border-gray-700/50">
+                          <div className="text-xs text-gray-400 mb-1">{label}</div>
+                          <div className="text-lg font-bold text-white">
+                            {currencySymbol}{formatPrice(displayPrice, currency)}
+                          </div>
+                          <div className={`text-xs mt-1 font-semibold ${isPositive ? 'text-green-400' : 'text-red-400'}`}>
+                            {isPositive ? '↗' : '↘'} {Math.abs(displayChange).toFixed(1)}%
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  
+                  {/* Simplified sentiment for mobile */}
+                  {data.mlPredictions.sentiment && (
+                    <div className="bg-cyan-800/40 rounded-lg p-3 border border-cyan-500/20">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium text-cyan-300">Market Sentiment</span>
+                        <span className={`text-xs px-2 py-0.5 rounded-full ${
+                          data.mlPredictions.sentiment.score > 0 ? 'bg-green-500/20 text-green-400' : 'bg-red-500/20 text-red-400'
+                        }`}>
+                          {data.mlPredictions.sentiment.score > 0 ? 'Bullish' : 'Bearish'}
+                        </span>
+                      </div>
+                      {data.mlPredictions.sentiment.summary && (
+                        <p className="text-xs text-gray-400 line-clamp-2">{data.mlPredictions.sentiment.summary}</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-emerald-900/30 via-teal-800/20 to-cyan-900/20 border border-emerald-500/40 rounded-2xl sm:rounded-3xl shadow-xl shadow-emerald-500/10 backdrop-blur-sm hover:border-emerald-500/60 transition-all duration-300">
+            <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
             <div className="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent rounded-2xl sm:rounded-3xl pointer-events-none"></div>
 
             {/* Header */}
@@ -1361,12 +1488,118 @@ export default function StockCard({ data }: { data: StockData }) {
               </details>
             )}
           </div>
+          )}
         </motion.div>
       )}
 
-      {/* Trading Signal & Support/Resistance */}
+      {/* Trading Signal & Support/Resistance - Mobile Collapsible */}
       {currentPrediction.tradingSignal && currentPrediction.supportResistance && (
-        <div className="relative mb-6 sm:mb-8 p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl sm:rounded-3xl shadow-xl backdrop-blur-sm hover:border-cyan-500/40 transition-all duration-300">
+        <div className={`relative ${isMobile ? 'mb-4' : 'mb-6 sm:mb-8'}`}>
+          {isMobile ? (
+            <div className="mb-4">
+              <button
+                onClick={() => toggleSection('technicalAnalysis')}
+                className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-slate-900/50 to-slate-800/50 rounded-lg border border-slate-700/50 mb-3 touch-manipulation min-h-[44px]"
+              >
+                <span className="font-semibold text-white flex items-center gap-2">
+                  <span className="text-xl">🎯</span>
+                  Trading Signals
+                  <span className={`text-xs px-2 py-0.5 rounded-full ${
+                    currentPrediction.tradingSignal.signal === 'STRONG_BUY' ? 'bg-green-500/20 text-green-400' :
+                    currentPrediction.tradingSignal.signal === 'BUY' ? 'bg-green-500/20 text-green-400' :
+                    currentPrediction.tradingSignal.signal === 'STRONG_SELL' ? 'bg-red-500/20 text-red-400' :
+                    currentPrediction.tradingSignal.signal === 'SELL' ? 'bg-red-500/20 text-red-400' :
+                    'bg-yellow-500/20 text-yellow-400'
+                  }`}>
+                    {currentPrediction.tradingSignal.signal.replace('_', ' ')}
+                  </span>
+                </span>
+                {expandedSections.technicalAnalysis ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+              </button>
+              
+              {expandedSections.technicalAnalysis && (
+                <div className="space-y-4">
+                  {/* Mobile-optimized trading signal */}
+                  <div className={`p-4 rounded-xl border-2 ${
+                    currentPrediction.tradingSignal.signal === 'STRONG_BUY' ? 'bg-green-900/30 border-green-500' :
+                    currentPrediction.tradingSignal.signal === 'BUY' ? 'bg-green-900/20 border-green-600' :
+                    currentPrediction.tradingSignal.signal === 'STRONG_SELL' ? 'bg-red-900/30 border-red-500' :
+                    currentPrediction.tradingSignal.signal === 'SELL' ? 'bg-red-900/20 border-red-600' :
+                    'bg-yellow-900/20 border-yellow-600'
+                  }`}>
+                    <div className="flex items-center justify-between mb-3">
+                      <span className="text-lg font-bold text-white">
+                        {currentPrediction.tradingSignal.signal.replace('_', ' ')}
+                      </span>
+                      <span className="text-sm text-gray-300 bg-slate-800/50 px-2 py-1 rounded">
+                        {currentPrediction.tradingSignal.strength}% Strength
+                      </span>
+                    </div>
+                    <p className="text-sm text-gray-300 mb-3">{currentPrediction.tradingSignal.description}</p>
+                    
+                    {/* Simplified reasons for mobile */}
+                    <details className="mt-3">
+                      <summary className="text-xs text-cyan-400 cursor-pointer">View Reasons ({currentPrediction.tradingSignal.reasons.length})</summary>
+                      <div className="mt-2 space-y-1">
+                        {currentPrediction.tradingSignal.reasons.slice(0, 3).map((reason, idx) => (
+                          <div key={idx} className="text-xs text-gray-400 flex items-start gap-1">
+                            <span className="text-cyan-400">•</span>
+                            <span>{reason}</span>
+                          </div>
+                        ))}
+                        {currentPrediction.tradingSignal.reasons.length > 3 && (
+                          <div className="text-xs text-gray-500 italic">
+                            ...and {currentPrediction.tradingSignal.reasons.length - 3} more
+                          </div>
+                        )}
+                      </div>
+                    </details>
+                  </div>
+
+                  {/* Simplified Support/Resistance for mobile */}
+                  {currentPrediction.supportResistance && (
+                    <div className="bg-gray-800/40 rounded-xl p-4 border border-gray-700/50">
+                      <h5 className="text-sm font-semibold text-gray-300 mb-3">Key Levels</h5>
+                      
+                      <div className="space-y-2">
+                        <div className="flex justify-between items-center p-2 bg-red-900/20 rounded border border-red-500/30">
+                          <span className="text-xs text-red-300">Resistance</span>
+                          <span className="text-sm font-bold text-white">
+                            {currencySymbol}{formatPrice(currentPrediction.supportResistance.resistance1, currency)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center p-2 bg-yellow-900/20 rounded border border-yellow-500/30">
+                          <span className="text-xs text-yellow-300">Pivot</span>
+                          <span className="text-sm font-bold text-white">
+                            {currencySymbol}{formatPrice(currentPrediction.supportResistance.pivot, currency)}
+                          </span>
+                        </div>
+                        
+                        <div className="flex justify-between items-center p-2 bg-green-900/20 rounded border border-green-500/30">
+                          <span className="text-xs text-green-300">Support</span>
+                          <span className="text-sm font-bold text-white">
+                            {currencySymbol}{formatPrice(currentPrediction.supportResistance.support1, currency)}
+                          </span>
+                        </div>
+                      </div>
+                      
+                      {/* Current price indicator */}
+                      <div className="mt-3 p-2 bg-orange-900/20 rounded border border-orange-500/30">
+                        <div className="flex justify-between items-center">
+                          <span className="text-xs text-orange-300">Current</span>
+                          <span className="text-sm font-bold text-orange-400">
+                            {currencySymbol}{formatPrice(data.current.price, currency)}
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="p-4 sm:p-6 lg:p-8 bg-gradient-to-br from-slate-900/50 via-slate-800/50 to-slate-900/50 border border-slate-700/50 rounded-2xl sm:rounded-3xl shadow-xl backdrop-blur-sm hover:border-cyan-500/40 transition-all duration-300">
           {/* Trading Signal */}
           <div className="mb-6 sm:mb-8">
             <h4 className="text-sm sm:text-base font-bold text-white mb-4 flex flex-col sm:flex-row sm:items-center gap-2">
@@ -1699,28 +1932,63 @@ export default function StockCard({ data }: { data: StockData }) {
         </div>
       </div>
 
-      {/* Short Term Chart */}
-      <div className="relative mb-6 sm:mb-8">
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
-          <div className="flex items-center gap-2">
-            <Activity size={18} className="text-purple-400" />
-            <h4 className="text-sm sm:text-base font-semibold text-white">6-Month Price Projection</h4>
+      {/* Short Term Chart - Mobile Collapsible */}
+      <div className={`relative ${isMobile ? 'mb-4' : 'mb-6 sm:mb-8'}`}>
+        {isMobile ? (
+          <div className="mb-4">
+            <button
+              onClick={() => toggleSection('longTermChart')}
+              className="w-full flex items-center justify-between p-3 bg-gradient-to-r from-cyan-900/30 to-blue-900/30 rounded-lg border border-cyan-500/40 mb-3 touch-manipulation min-h-[44px]"
+            >
+              <span className="font-semibold text-white flex items-center gap-2">
+                <span className="text-lg">📊</span>
+                Long-term Projections
+              </span>
+              {expandedSections.longTermChart ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+            </button>
+            
+            {expandedSections.longTermChart && (
+              <div className="bg-gray-800/40 rounded-xl p-3 border border-cyan-500/20">
+                <ResponsiveContainer width="100%" height={200}>
+                  <AreaChart data={data.longTermChartData} margin={{ top: 5, right: 5, left: 5, bottom: 5 }}>
+                    <XAxis 
+                      dataKey="month" 
+                      stroke="#6b7280" 
+                      fontSize={8}
+                      tickLine={false}
+                      interval="preserveStartEnd"
+                    />
+                    <YAxis 
+                      stroke="#6b7280" 
+                      fontSize={8}
+                      tickLine={false}
+                      width={40}
+                      tickFormatter={(v) => `${currencySymbol}${formatPrice(v, currency)}`}
+                    />
+                    <Tooltip 
+                      contentStyle={{
+                        backgroundColor: '#1f2937', 
+                        border: '1px solid #374151',
+                        borderRadius: '0.5rem',
+                        color: '#f3f4f6',
+                        fontSize: '10px'
+                      }}
+                    />
+                    
+                    <Area 
+                      type="monotone" 
+                      dataKey="expected"
+                      stroke="#8b5cf6"
+                      strokeWidth={2}
+                      fill="url(#expectedGradient)"
+                      dot={false}
+                    />
+                  </AreaChart>
+                </ResponsiveContainer>
+              </div>
+            )}
           </div>
-          <div className="flex flex-wrap items-center gap-2 sm:gap-3 text-xs">
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <div className="w-3 h-0.5 bg-red-500"></div>
-              <span className="text-gray-300">Conservative</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <div className="w-3 h-0.5 bg-purple-500"></div>
-              <span className="text-gray-300">Expected</span>
-            </div>
-            <div className="flex items-center gap-1.5 px-2 py-1 bg-slate-800/50 rounded-lg">
-              <div className="w-3 h-0.5 bg-green-500"></div>
-              <span className="text-gray-300">Optimistic</span>
-            </div>
-          </div>
-        </div>
+        ) : (
         <div className="bg-gradient-to-br from-slate-900/50 to-slate-800/50 rounded-2xl p-3 sm:p-4 lg:p-6 border border-purple-500/20 hover:border-purple-500/40 transition-all duration-300 backdrop-blur-sm">
           <ResponsiveContainer width="100%" height={250} className="sm:h-80 lg:h-96">
             <AreaChart data={data.longTermChartData}>
@@ -1814,6 +2082,7 @@ export default function StockCard({ data }: { data: StockData }) {
             </AreaChart>
           </ResponsiveContainer>
         </div>
+        )}
       </div>
 
       {/* Comprehensive Investment Report Card */}
@@ -2461,7 +2730,7 @@ export default function StockCard({ data }: { data: StockData }) {
                   </div>
                 )}
               </div>
-            </div>
+              </div>
           )}
         </div>
       )}
@@ -3353,32 +3622,116 @@ export default function StockCard({ data }: { data: StockData }) {
                       )}
                     </div>
                   )}
-                  {data.annualReport.cashFlow.derivedMetrics?.cashConversionRatio && (
-                    <div className="bg-gray-800/40 rounded-lg p-3">
-                      <div className="text-xs text-gray-400 mb-1">Cash Conversion</div>
-                      <div className="text-xl font-bold text-blue-400">
-                        {renderValue(data.annualReport.cashFlow.derivedMetrics.cashConversionRatio.current)}%
-                      </div>
+                </div>
+
+                {/* Year-over-Year Analysis */}
+                {data.annualReport.cashFlow.yoyComparison && (
+                  <div className="bg-gray-800/40 rounded-lg p-4">
+                    <h5 className="text-sm font-semibold text-cyan-300 mb-3 flex items-center gap-2">
+                      📊 Year-over-Year Changes
+                    </h5>
+                    <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-xs">
+                      {data.annualReport.cashFlow.yoyComparison.operatingCashFlow?.changeAmount && (
+                        <div className="text-center">
+                          <div className="text-gray-400 mb-1">Operating Cash Flow Change</div>
+                          <div className={`text-lg font-bold ${
+                            data.annualReport.cashFlow.yoyComparison.operatingCashFlow.changeAmount > 0 ? 'text-green-400' : 'text-red-400'
+                          }`}>
+                            ₹{Math.abs(data.annualReport.cashFlow.yoyComparison.operatingCashFlow.changeAmount)} Cr
+                          </div>
+                        </div>
+                      )}
                     </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Quarterly Report Summary */}
+            {data.quarterlyReport && (
+              <div className="bg-gradient-to-br from-slate-900/40 to-gray-900/40 rounded-xl p-5 border border-slate-500/30 mb-6">
+                <h4 className="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
+                  <span className="text-xl">📄</span> Quarterly Report ({data.quarterlyReport.quarter})
+                  {data.quarterlyReport.fromCache && (
+                    <span className="text-xs bg-slate-600/30 px-2 py-1 rounded-full">Cached</span>
                   )}
-                  {data.annualReport.cashFlow.healthIndicators?.cashFlowQuality && (
-                    <div className="bg-gray-800/40 rounded-lg p-3">
-                      <div className="text-xs text-gray-400 mb-1">CF Quality</div>
-                      <div className={`text-lg font-bold ${
-                        data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Excellent' ? 'text-green-400' :
-                        data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Good' ? 'text-blue-400' :
-                        'text-yellow-400'
-                      }`}>
-                        {renderValue(data.annualReport.cashFlow.healthIndicators.cashFlowQuality)}
-                      </div>
-                    </div>
-                  )}
-                  {data.annualReport.cashFlow.reconciliation?.closingCash && (
-                    <div className="bg-gray-800/40 rounded-lg p-3">
-                      <div className="text-xs text-gray-400 mb-1">Closing Cash</div>
-                      <div className="text-xl font-bold text-white">
-                        ₹{renderValue(data.annualReport.cashFlow.reconciliation.closingCash.current)} Cr
-                      </div>
+                </h4>
+                {data.quarterlyReport.summary && (
+                  <p className="text-sm text-gray-300 leading-relaxed mb-4">
+                    {data.quarterlyReport.summary}
+                  </p>
+                )}
+                {data.quarterlyReport.source && (
+                  <div className="text-xs text-gray-500">
+                    Source: {data.quarterlyReport.source}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Free Cash Flow - Key Metric */}
+      {data.annualReport?.cashFlow?.derivedMetrics?.freeCashFlow && (
+        <div className="bg-gradient-to-r from-cyan-900/20 to-blue-900/20 rounded-lg p-4 border border-cyan-500/30">
+          <div className="flex items-center justify-between">
+            <div className="text-sm font-semibold text-cyan-300 flex items-center gap-2">
+              💰 Free Cash Flow
+            </div>
+          </div>
+
+          <div className="mt-2 grid grid-cols-2 md:grid-cols-3 gap-4">
+            {/* Current FCF */}
+            {data.annualReport.cashFlow.derivedMetrics.freeCashFlow.current && (
+              <div className="text-center">
+                <div className="text-xs text-gray-400 mb-1">Current</div>
+                <div className="text-xl font-bold text-white">
+                  ₹{renderValue(data.annualReport.cashFlow.derivedMetrics.freeCashFlow.current)} Cr
+                </div>
+                {data.annualReport.cashFlow.yoyComparison?.freeCashFlow?.changePercent && (
+                  <div className={`text-xs mt-1 ${
+                    data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent > 0 
+                      ? 'text-green-400' : 'text-red-400'
+                  }`}>
+                    {data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent > 0 ? '↑' : '↓'} 
+                    {Math.abs(data.annualReport.cashFlow.yoyComparison.freeCashFlow.changePercent)}% YoY
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Cash Conversion Ratio */}
+            {data.annualReport.cashFlow.derivedMetrics?.cashConversionRatio && (
+              <div className="text-center">
+                <div className="text-xs text-gray-400 mb-1">Cash Conversion</div>
+                <div className="text-xl font-bold text-blue-400">
+                  {renderValue(data.annualReport.cashFlow.derivedMetrics.cashConversionRatio.current)}%
+                </div>
+              </div>
+            )}
+
+            {/* Cash Flow Quality */}
+            {data.annualReport.cashFlow.healthIndicators?.cashFlowQuality && (
+              <div className="text-center">
+                <div className="text-xs text-gray-400 mb-1">CF Quality</div>
+                <div className={`text-lg font-bold ${
+                  data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Excellent' ? 'text-green-400' :
+                  data.annualReport.cashFlow.healthIndicators.cashFlowQuality === 'Good' ? 'text-blue-400' :
+                  'text-yellow-400'
+                }`}>
+                  {renderValue(data.annualReport.cashFlow.healthIndicators.cashFlowQuality)}
+                </div>
+              </div>
+            )}
+
+            {/* Closing Cash */}
+            {data.annualReport.cashFlow.reconciliation?.closingCash && (
+              <div className="text-center">
+                <div className="text-xs text-gray-400 mb-1">Closing Cash</div>
+                <div className="text-xl font-bold text-white">
+                  ₹{renderValue(data.annualReport.cashFlow.reconciliation.closingCash.current)} Cr
+                </div>
                       {data.annualReport.cashFlow.yoyComparison?.closingCash?.changePercent && (
                         <div className={`text-xs mt-1 ${
                           data.annualReport.cashFlow.yoyComparison.closingCash.changePercent > 0 
@@ -3482,7 +3835,6 @@ export default function StockCard({ data }: { data: StockData }) {
                 )}
               </div>
             )}
-          </div>
         </div>
       )}
 
@@ -3907,6 +4259,52 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
       )}
+      {/* Key Insights - Always visible, mobile optimized */}
+      <div className={`bg-gray-800/40 rounded-xl ${isMobile ? 'p-3 mb-4' : 'p-4 mb-6'} border border-gray-700/30`}>
+        <h4 className={`${isMobile ? 'text-sm' : 'text-sm'} font-semibold text-gray-300 mb-3 flex items-center gap-2`}>
+          💡 Key Insights
+        </h4>
+        <div className={`space-y-2 ${isMobile ? 'max-h-48 overflow-y-auto' : ''}`}>
+          {data.bulletPoints.slice(0, isMobile ? 5 : data.bulletPoints.length).map((point, index) => (
+            <div key={index} className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-300 flex items-start gap-2`}>
+              <span className="text-cyan-400 mt-1 text-xs">•</span>
+              <span className="flex-1 leading-relaxed">{parseBulletPoint(point)}</span>
+            </div>
+          ))}
+          {isMobile && data.bulletPoints.length > 5 && (
+            <details className="mt-2">
+              <summary className="text-xs text-cyan-400 cursor-pointer">
+                View {data.bulletPoints.length - 5} more insights
+              </summary>
+              <div className="mt-2 space-y-2 pl-2 border-l-2 border-cyan-500/30">
+                {data.bulletPoints.slice(5).map((point, index) => (
+                  <div key={index + 5} className="text-xs text-gray-300 flex items-start gap-2">
+                    <span className="text-cyan-400 mt-1 text-xs">•</span>
+                    <span className="flex-1 leading-relaxed">{parseBulletPoint(point)}</span>
+                  </div>
+                ))}
+              </div>
+            </details>
+          )}
+        </div>
       </div>
+
+      {/* Mobile Footer */}
+      {isMobile && (
+        <div className="pt-3 border-t border-gray-700/30 flex flex-col gap-2 text-xs text-gray-500">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-3 h-3" />
+              <span>Updated: {new Date(data.metadata.timestamp).toLocaleString()}</span>
+            </div>
+            {data.fromCache && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 rounded border border-blue-500/30">
+                <span className="text-blue-400">📦 Cached</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
   );
 }
