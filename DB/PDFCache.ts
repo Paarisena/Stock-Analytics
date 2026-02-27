@@ -1,4 +1,5 @@
 import mongoose from 'mongoose';
+import '@app/utils/serverPolyfills'; // Ensure polyfills are available for fetch and other APIs in Node.js environment
 
 const PDFCacheSchema = new mongoose.Schema({
     
