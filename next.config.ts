@@ -9,7 +9,7 @@ const nextConfig: NextConfig = {
     unoptimized: true,
   },
   trailingSlash: true,
-  outputFileTracingRoot: path.join(__dirname),
+  // outputFileTracingRoot: path.join(__dirname),
 
   serverExternalPackages: [
     'mongoose',
