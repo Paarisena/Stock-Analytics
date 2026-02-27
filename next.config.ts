@@ -3,13 +3,13 @@ import path from "path";
 
 const nextConfig: NextConfig = {
   reactStrictMode: false,
-  output: 'standalone',
+  // output: 'standalone',
   turbopack: {},
   images: {
     unoptimized: true,
   },
   trailingSlash: true,
-  outputFileTracingRoot: path.join(__dirname),
+  // outputFileTracingRoot: path.join(__dirname),
   
   serverExternalPackages: [
     'mongoose',
