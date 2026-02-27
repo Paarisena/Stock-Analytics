@@ -17,7 +17,6 @@ const nextConfig: NextConfig = {
     'pdf-parse', 
     'pdf2json',
     '@google/generative-ai',
-    '@napi-rs/canvas',          // ← ADD THIS too
   ],
   
   // Keep webpack config
@@ -30,7 +29,6 @@ const nextConfig: NextConfig = {
         'pdf-parse',
         'pdf2json',
         '@google/generative-ai',
-        '@napi-rs/canvas',      // ← ADD THIS too
       ];
     }
     return config;
