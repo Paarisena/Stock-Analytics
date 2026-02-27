@@ -9,8 +9,8 @@ export function middleware(request: NextRequest) {
     const devOrigins = [
         'http://localhost:3000',
         'http://localhost:3001',
-        'http://127.0.0.1:3000',
-        'stock-analytics-weld.vercel.app'
+        'http://127.0.0.1:3000'
+        
     ];
     
     // Production origins (from environment variable)
