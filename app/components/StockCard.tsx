@@ -2322,7 +2322,7 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
       </div>
-
+      
       {/* Bullet Points Summary */}
       <div className="bg-gray-800/40 rounded-xl p-4 mb-6">
         <h4 className="text-sm font-semibold text-gray-300 mb-3">Key Insights</h4>
@@ -2335,6 +2335,22 @@ export default function StockCard({ data }: { data: StockData }) {
           ))}
         </ul>
       </div>
+      {/* Mobile Footer */}
+      {isMobile && (
+        <div className="pt-3 border-t border-gray-700/30 flex flex-col gap-2 text-xs text-gray-500">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Clock className="w-3 h-3" />
+              <span>Updated: {new Date(data.metadata.timestamp).toLocaleString()}</span>
+            </div>
+            {data.fromCache && (
+              <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 rounded border border-blue-500/30">
+                <span className="text-blue-400">📦 Cached</span>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Fundamental Analysis */}
       {data.fundamentals && (
@@ -3646,28 +3662,6 @@ export default function StockCard({ data }: { data: StockData }) {
                 )}
               </div>
             )}
-
-            {/* Quarterly Report Summary */}
-            {data.quarterlyReport && (
-              <div className="bg-gradient-to-br from-slate-900/40 to-gray-900/40 rounded-xl p-5 border border-slate-500/30 mb-6">
-                <h4 className="text-base font-bold text-slate-200 mb-4 flex items-center gap-2">
-                  <span className="text-xl">📄</span> Quarterly Report ({data.quarterlyReport.quarter})
-                  {data.quarterlyReport.fromCache && (
-                    <span className="text-xs bg-slate-600/30 px-2 py-1 rounded-full">Cached</span>
-                  )}
-                </h4>
-                {data.quarterlyReport.summary && (
-                  <p className="text-sm text-gray-300 leading-relaxed mb-4">
-                    {data.quarterlyReport.summary}
-                  </p>
-                )}
-                {data.quarterlyReport.source && (
-                  <div className="text-xs text-gray-500">
-                    Source: {data.quarterlyReport.source}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         </div>
       )}
@@ -4259,52 +4253,7 @@ export default function StockCard({ data }: { data: StockData }) {
           </div>
         </div>
       )}
-      {/* Key Insights - Always visible, mobile optimized */}
-      <div className={`bg-gray-800/40 rounded-xl ${isMobile ? 'p-3 mb-4' : 'p-4 mb-6'} border border-gray-700/30`}>
-        <h4 className={`${isMobile ? 'text-sm' : 'text-sm'} font-semibold text-gray-300 mb-3 flex items-center gap-2`}>
-          💡 Key Insights
-        </h4>
-        <div className={`space-y-2 ${isMobile ? 'max-h-48 overflow-y-auto' : ''}`}>
-          {data.bulletPoints.slice(0, isMobile ? 5 : data.bulletPoints.length).map((point, index) => (
-            <div key={index} className={`${isMobile ? 'text-xs' : 'text-sm'} text-gray-300 flex items-start gap-2`}>
-              <span className="text-cyan-400 mt-1 text-xs">•</span>
-              <span className="flex-1 leading-relaxed">{parseBulletPoint(point)}</span>
-            </div>
-          ))}
-          {isMobile && data.bulletPoints.length > 5 && (
-            <details className="mt-2">
-              <summary className="text-xs text-cyan-400 cursor-pointer">
-                View {data.bulletPoints.length - 5} more insights
-              </summary>
-              <div className="mt-2 space-y-2 pl-2 border-l-2 border-cyan-500/30">
-                {data.bulletPoints.slice(5).map((point, index) => (
-                  <div key={index + 5} className="text-xs text-gray-300 flex items-start gap-2">
-                    <span className="text-cyan-400 mt-1 text-xs">•</span>
-                    <span className="flex-1 leading-relaxed">{parseBulletPoint(point)}</span>
-                  </div>
-                ))}
-              </div>
-            </details>
-          )}
-        </div>
-      </div>
-
-      {/* Mobile Footer */}
-      {isMobile && (
-        <div className="pt-3 border-t border-gray-700/30 flex flex-col gap-2 text-xs text-gray-500">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Clock className="w-3 h-3" />
-              <span>Updated: {new Date(data.metadata.timestamp).toLocaleString()}</span>
-            </div>
-            {data.fromCache && (
-              <div className="flex items-center gap-1 px-2 py-1 bg-blue-500/10 rounded border border-blue-500/30">
-                <span className="text-blue-400">📦 Cached</span>
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+           
     </div>
   );
 }
