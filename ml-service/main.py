@@ -70,7 +70,7 @@ class IntradayPredictionRequest(BaseModel):
 async def health():
     return {
         "status": "healthy",
-        "models": ["lstm", "random_forest", "linear_regression"],
+        "models": ["lstm", "random_forest", "linear_regression", "volume_predictor"],
         "cache_size": cache.size(),
     }
 
@@ -143,3 +143,63 @@ async def predict_intraday(request: IntradayPredictionRequest):
 
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Intraday prediction failed: {str(e)}")
+
+
+# ── Volume / Delivery Prediction ──
+
+class VolumePredictionRequest(BaseModel):
+    symbol: str
+    historical_prices: list[float]
+    historical_volumes: list[float]
+    delivery_history: list[float] | None = None
+    days: int = 5
+
+
+@app.post("/predict/volume")
+async def predict_volume(request: VolumePredictionRequest):
+    """
+    Volume & delivery % prediction endpoint.
+    Takes historical prices + volumes + optional delivery history.
+    Returns next N days of predicted volume and delivery %.
+    """
+    min_data = max(30, len(request.historical_prices), len(request.historical_volumes))
+    if len(request.historical_prices) < 30 or len(request.historical_volumes) < 30:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Need at least 30 days of price + volume data, got {len(request.historical_prices)} prices and {len(request.historical_volumes)} volumes",
+        )
+
+    start_time = time.time()
+
+    cache_key = f"{request.symbol}_volume"
+    cached = cache.get(cache_key)
+    if cached:
+        cached["cached"] = True
+        cached["training_time_ms"] = 0
+        return cached
+
+    try:
+        from models.volume_predictor import VolumePredictor
+        predictor = VolumePredictor()
+        predictor.train(
+            request.historical_prices,
+            request.historical_volumes,
+            request.delivery_history,
+        )
+        result = predictor.predict(
+            request.historical_prices,
+            request.historical_volumes,
+            request.delivery_history,
+            days=request.days,
+        )
+
+        training_time = int((time.time() - start_time) * 1000)
+        result["symbol"] = request.symbol
+        result["training_time_ms"] = training_time
+        result["cached"] = False
+
+        cache.set(cache_key, result)
+        return result
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Volume prediction failed: {str(e)}")

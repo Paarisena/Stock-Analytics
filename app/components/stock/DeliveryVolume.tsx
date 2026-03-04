@@ -21,6 +21,25 @@ export interface DeliveryVolumeData {
   }[];
   /** Average delivery % over the history period */
   avgDeliveryPercent: number;
+  /** Data source */
+  source?: 'nse_live' | 'estimated';
+  /** ML volume/delivery predictions for next 5 days */
+  mlVolumePredictions?: {
+    volumePredictions: { day: number; volume: number; change_pct: number }[];
+    deliveryPredictions: { day: number; delivery_pct: number }[];
+    volumeTrend: string;
+    deliveryTrend: string;
+    confidence: number;
+    trainingTimeMs: number;
+  } | null;
+  /** Gemini qualitative volume reasoning */
+  geminiVolumeContext?: {
+    volumeOutlook: string;
+    direction: string;
+    reasoning: string;
+    catalysts: string[];
+    confidence: string;
+  } | null;
 }
 
 interface DeliveryVolumeProps {
@@ -173,6 +192,84 @@ export default function DeliveryVolume({ data, symbol }: DeliveryVolumeProps) {
         </div>
       )}
 
+      {/* ML Volume Forecast */}
+      {data.mlVolumePredictions && (
+        <div className="mt-4 bg-gray-800/30 rounded-xl p-3 border border-gray-700/30">
+          <div className="text-[10px] text-gray-500 mb-2 flex items-center gap-2">
+            <span>ML Volume Forecast (Next 5 Days)</span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+              data.mlVolumePredictions.volumeTrend === 'increasing' ? 'bg-green-500/20 text-green-400' :
+              data.mlVolumePredictions.volumeTrend === 'decreasing' ? 'bg-red-500/20 text-red-400' :
+              'bg-yellow-500/20 text-yellow-400'
+            }`}>
+              {data.mlVolumePredictions.volumeTrend}
+            </span>
+            {data.mlVolumePredictions.deliveryTrend !== 'neutral' && (
+              <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+                data.mlVolumePredictions.deliveryTrend === 'accumulation' ? 'bg-green-500/20 text-green-400' :
+                'bg-red-500/20 text-red-400'
+              }`}>
+                {data.mlVolumePredictions.deliveryTrend}
+              </span>
+            )}
+          </div>
+          <div className="grid grid-cols-5 gap-1.5">
+            {data.mlVolumePredictions.volumePredictions.map((v, i) => (
+              <div key={i} className="bg-gray-900/40 rounded-lg p-2 text-center">
+                <div className="text-[9px] text-gray-500">Day {v.day}</div>
+                <div className="text-[11px] font-semibold text-gray-200">{formatVolume(v.volume)}</div>
+                <div className={`text-[9px] font-semibold ${v.change_pct >= 0 ? 'text-green-400' : 'text-red-400'}`}>
+                  {v.change_pct >= 0 ? '+' : ''}{v.change_pct}%
+                </div>
+                {data.mlVolumePredictions!.deliveryPredictions[i] && (
+                  <div className="text-[9px] text-indigo-400 mt-0.5">
+                    Del: {data.mlVolumePredictions!.deliveryPredictions[i].delivery_pct}%
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 text-[9px] text-gray-600 flex items-center gap-2">
+            <span>Confidence: {(data.mlVolumePredictions.confidence * 100).toFixed(0)}%</span>
+            <span className="text-gray-700">|</span>
+            <span>Trained in {data.mlVolumePredictions.trainingTimeMs}ms</span>
+          </div>
+        </div>
+      )}
+
+      {/* Gemini Volume Insight */}
+      {data.geminiVolumeContext && (
+        <div className="mt-3 bg-gradient-to-r from-blue-900/20 to-purple-900/20 rounded-xl p-3 border border-blue-500/20">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-[10px] text-blue-400 font-semibold">AI Volume Insight</span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] font-semibold ${
+              data.geminiVolumeContext.volumeOutlook === 'spike_likely' ? 'bg-green-500/20 text-green-400' :
+              data.geminiVolumeContext.volumeOutlook === 'above_average' ? 'bg-emerald-500/20 text-emerald-400' :
+              data.geminiVolumeContext.volumeOutlook === 'dry_up_likely' ? 'bg-red-500/20 text-red-400' :
+              data.geminiVolumeContext.volumeOutlook === 'below_average' ? 'bg-orange-500/20 text-orange-400' :
+              'bg-yellow-500/20 text-yellow-400'
+            }`}>
+              {data.geminiVolumeContext.volumeOutlook.replace(/_/g, ' ')}
+            </span>
+            <span className={`px-1.5 py-0.5 rounded text-[9px] ${
+              data.geminiVolumeContext.direction === 'bullish_volume' ? 'text-green-400' :
+              data.geminiVolumeContext.direction === 'bearish_volume' ? 'text-red-400' :
+              'text-gray-400'
+            }`}>
+              {data.geminiVolumeContext.direction.replace(/_/g, ' ')}
+            </span>
+          </div>
+          <p className="text-[11px] text-gray-300 leading-relaxed">{data.geminiVolumeContext.reasoning}</p>
+          {data.geminiVolumeContext.catalysts?.length > 0 && (
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              {data.geminiVolumeContext.catalysts.map((c, i) => (
+                <span key={i} className="text-[9px] bg-gray-700/40 text-gray-400 px-2 py-0.5 rounded-full">{c}</span>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
       {/* What This Means — Educational */}
       <details className="mt-3 group">
         <summary className="cursor-pointer text-[10px] text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1 select-none">
@@ -188,10 +285,20 @@ export default function DeliveryVolume({ data, symbol }: DeliveryVolumeProps) {
       </details>
 
       {/* Source */}
-      <div className="mt-3 pt-2 border-t border-gray-700/20 text-[10px] text-gray-600 flex items-center gap-2">
-        <span>📦 Source: NSE Bhavcopy</span>
-        <span className="text-gray-700">•</span>
-        <span>Feeds into RF + LR models as feature</span>
+      <div className="mt-3 pt-2 border-t border-gray-700/20 text-[10px] text-gray-600 flex items-center gap-2 flex-wrap">
+        <span>Source: {data.source === 'nse_live' ? 'NSE Live API' : data.source === 'estimated' ? 'Volume Estimation' : 'NSE Bhavcopy'}</span>
+        {data.mlVolumePredictions && (
+          <>
+            <span className="text-gray-700">+</span>
+            <span>ML Forecast ({data.mlVolumePredictions.trainingTimeMs}ms)</span>
+          </>
+        )}
+        {data.geminiVolumeContext && (
+          <>
+            <span className="text-gray-700">+</span>
+            <span>Gemini AI Context</span>
+          </>
+        )}
       </div>
     </motion.div>
   );

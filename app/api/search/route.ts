@@ -177,6 +177,10 @@ const batchDataCache = new CacheManager<{
 const perplexitySearchCache = new CacheManager<{ content: string; citations: any[]; tokensUsed: number; cost: number }>('Perplexity Search');
 const CACHE_DURATION_SEARCH = 24 * 60 * 60 * 1000; // 24 hours for search results
 
+// Delivery Volume Cache (4 hours - updates once per trading session)
+const deliveryCache = new CacheManager<any>('Delivery');
+const CACHE_DURATION_DELIVERY = 4 * 60 * 60 * 1000;
+
 function getCachedPrediction(symbol: string, dataType: 'full' | 'price' | 'ai' = 'full') {
   // Select appropriate cache duration based on data type
   let cacheDuration: number;
@@ -2253,6 +2257,7 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
         let technicalIndicators = null;
         let historicalPrices: number[] = [];
         let historicalVolumes: number[] = [];
+        let historicalDates: number[] = [];
         try {
             const historicalResponse = await fetchWithTimeout(
                 `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=200d`,
@@ -2260,8 +2265,16 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
                 5000
             );
             const historicalData = await historicalResponse.json();
-           historicalPrices = historicalData.chart?.result?.[0]?.indicators?.quote?.[0]?.close?.filter((p: number) => p !== null) || [];
-           historicalVolumes = historicalData.chart?.result?.[0]?.indicators?.quote?.[0]?.volume?.filter((v: number) => v !== null) || [];
+           const rawTimestamps: number[] = historicalData.chart?.result?.[0]?.timestamp || [];
+           const rawClose: (number | null)[] = historicalData.chart?.result?.[0]?.indicators?.quote?.[0]?.close || [];
+           const rawVolume: (number | null)[] = historicalData.chart?.result?.[0]?.indicators?.quote?.[0]?.volume || [];
+           // Keep all three arrays aligned by filtering together on trading days only
+           const validEntries = rawTimestamps
+               .map((ts: number, i: number) => ({ ts, price: rawClose[i], volume: rawVolume[i] }))
+               .filter((e) => e.price != null && e.volume != null);
+           historicalDates = validEntries.map(e => e.ts);
+           historicalPrices = validEntries.map(e => e.price as number);
+           historicalVolumes = validEntries.map(e => e.volume as number);
 
             if (historicalPrices.length >= 14) {
                 technicalIndicators = calculateTechnicalIndicators(historicalPrices);
@@ -2291,7 +2304,7 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
 
             // Delivery volume fetch (for Indian stocks mainly, but also fallback estimation)
             if (historicalVolumes.length >= 10 && historicalPrices.length >= 10) {
-                deliveryPromise = fetchDeliveryData(symbol, historicalVolumes, historicalPrices).catch(err => {
+                deliveryPromise = fetchDeliveryData(symbol, historicalVolumes, historicalPrices, historicalDates).catch(err => {
                     console.warn(`⚠️ [Delivery] Parallel fetch failed: ${err.message}`);
                     return null;
                 });
@@ -2305,9 +2318,10 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
                 });
             }
 
-          // ── ML PREDICTION SERVICE ──
+          // ── ML PREDICTION SERVICE (Price + Volume in parallel) ──
              console.log(`🔍 [ML DEBUG] About to check ML. historicalPrices exists: ${typeof historicalPrices !== 'undefined'}, length: ${historicalPrices?.length || 0}, currentPrice: ${currentPrice || 'undefined'}, fundamentals: ${typeof fundamentals !== 'undefined'}`);
             let mlPredictions = null;
+            let mlVolumePredictions: any = null;
             if (historicalPrices.length >= 30) {
                 // Await all parallel data before ML call so we can feed as features
                 if (sentimentPromise) {
@@ -2323,39 +2337,59 @@ async function buildStockData(symbol: string, fundamentals: any, skipAI: boolean
                     fiidiiPromise = null;
                 }
 
-                try {
-                    console.log(`🤖 [ML] Calling ML prediction service with ${historicalPrices.length} prices${sentimentData ? ` + sentiment (${sentimentData.score.toFixed(2)})` : ''}${deliveryData ? ` + delivery (${deliveryData.deliveryPercent.toFixed(1)}%)` : ''}${fiidiiData ? ` + FII/DII` : ''}...`);
-                    const mlResponse = await fetch('http://localhost:8000/predict/price', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            symbol: symbol,
-                            historical_prices: historicalPrices,
-                            current_price: currentPrice,
-                            fundamentals: fundamentals || null,
-                            sentiment: sentimentData ? {
-                                score: sentimentData.score,
-                                magnitude: sentimentData.magnitude
-                            } : null,
-                            delivery_data: deliveryData ? {
-                                deliveryPercent: deliveryData.deliveryPercent,
-                                avgDeliveryPercent: deliveryData.avgDeliveryPercent,
-                            } : null,
-                            fiidii_data: fiidiiData ? {
-                                fiiNet: fiidiiData.fii.netValue,
-                                diiNet: fiidiiData.dii.netValue,
-                            } : null,
-                        }),
-                        signal: AbortSignal.timeout(15000),
-                    });
-                    if (mlResponse.ok) {
-                        mlPredictions = await mlResponse.json();
-                        console.log(`✅ [ML] Predictions received (cached: ${mlPredictions.cached}, time: ${mlPredictions.training_time_ms}ms)`);
-                    } else {
-                        console.warn(`⚠️ [ML] Service returned ${mlResponse.status}`);
-                    }
-                } catch (mlError: any) {
-                    console.warn(`⚠️ [ML] Service unavailable: ${mlError.message}`);
+                // Fire both ML calls in parallel
+                const mlPricePromise = fetch('http://localhost:8000/predict/price', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        historical_prices: historicalPrices,
+                        current_price: currentPrice,
+                        fundamentals: fundamentals || null,
+                        sentiment: sentimentData ? {
+                            score: sentimentData.score,
+                            magnitude: sentimentData.magnitude
+                        } : null,
+                        delivery_data: deliveryData ? {
+                            deliveryPercent: deliveryData.deliveryPercent,
+                            avgDeliveryPercent: deliveryData.avgDeliveryPercent,
+                        } : null,
+                        fiidii_data: fiidiiData ? {
+                            fiiNet: fiidiiData.fii.netValue,
+                            diiNet: fiidiiData.dii.netValue,
+                        } : null,
+                    }),
+                    signal: AbortSignal.timeout(15000),
+                }).then(r => r.ok ? r.json() : null).catch(() => null);
+
+                const mlVolumePromise = (historicalVolumes.length >= 30) ? fetch('http://localhost:8000/predict/volume', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        symbol: symbol,
+                        historical_prices: historicalPrices,
+                        historical_volumes: historicalVolumes,
+                        delivery_history: deliveryData?.history?.map((h: any) => h.deliveryPercent) || null,
+                        days: 5,
+                    }),
+                    signal: AbortSignal.timeout(15000),
+                }).then(r => r.ok ? r.json() : null).catch(() => null) : Promise.resolve(null);
+
+                console.log(`🤖 [ML] Calling price + volume prediction services in parallel...`);
+                const [priceResult, volumeResult] = await Promise.all([mlPricePromise, mlVolumePromise]);
+
+                if (priceResult) {
+                    mlPredictions = priceResult;
+                    console.log(`✅ [ML Price] Predictions received (cached: ${mlPredictions.cached}, time: ${mlPredictions.training_time_ms}ms)`);
+                } else {
+                    console.warn(`⚠️ [ML Price] Service unavailable or returned error`);
+                }
+
+                if (volumeResult) {
+                    mlVolumePredictions = volumeResult;
+                    console.log(`✅ [ML Volume] Predictions received (trend: ${mlVolumePredictions.volume_trend}, confidence: ${mlVolumePredictions.confidence})`);
+                } else {
+                    console.warn(`⚠️ [ML Volume] Service unavailable or returned error`);
                 }
             }
         
@@ -2512,20 +2546,20 @@ Provide detailed analysis in this EXACT JSON format:
             predictions = getDefaultPredictions(currentPrice);
         }
 
-        // 3b. Gemini AI Analysis — evaluates ML predictions, provides signal/reasoning
+        // 3b. Gemini AI Analysis + Volume Context — both in parallel
         let aiAnalysis = null;
+        let geminiVolumeContext: any = null;
         if (!skipAI && mlPredictions) {
-            try {
-                aiAnalysis = await getGeminiStockAnalysis(
-                    symbol,
-                    currentPrice,
-                    mlPredictions,
-                    fundamentals,
-                    comprehensiveData,
-                );
-            } catch (analysisErr: any) {
-                console.warn(`⚠️ [AI Analysis] Skipped: ${analysisErr.message}`);
-            }
+            const [aiResult, volCtxResult] = await Promise.allSettled([
+                getGeminiStockAnalysis(symbol, currentPrice, mlPredictions, fundamentals, comprehensiveData),
+                (deliveryData || mlVolumePredictions) ? getGeminiVolumeContext(
+                    symbol, currentPrice, deliveryData, mlVolumePredictions, sentimentData, technicalIndicators
+                ) : Promise.resolve(null),
+            ]);
+            aiAnalysis = aiResult.status === 'fulfilled' ? aiResult.value : null;
+            geminiVolumeContext = volCtxResult.status === 'fulfilled' ? volCtxResult.value : null;
+            if (aiResult.status === 'rejected') console.warn(`⚠️ [AI Analysis] Skipped: ${(aiResult as any).reason?.message}`);
+            if (volCtxResult.status === 'rejected') console.warn(`⚠️ [Gemini Volume] Skipped: ${(volCtxResult as any).reason?.message}`);
         }
         
         // 4. Build chart data with realistic historical simulation
@@ -2635,7 +2669,18 @@ Provide detailed analysis in this EXACT JSON format:
             longTermChartData: longTermChartData,
             bulletPoints: predictions.bulletPoints,
             fundamentals: fundamentals,
-            deliveryVolume: deliveryData || null,
+            deliveryVolume: deliveryData ? {
+                ...deliveryData,
+                mlVolumePredictions: mlVolumePredictions ? {
+                    volumePredictions: mlVolumePredictions.volume_predictions,
+                    deliveryPredictions: mlVolumePredictions.delivery_predictions,
+                    volumeTrend: mlVolumePredictions.volume_trend,
+                    deliveryTrend: mlVolumePredictions.delivery_trend,
+                    confidence: mlVolumePredictions.confidence,
+                    trainingTimeMs: mlVolumePredictions.training_time_ms,
+                } : null,
+                geminiVolumeContext: geminiVolumeContext || null,
+            } : null,
             fiidiiFlow: fiidiiData || null,
             investmentAnalysis: !skipAI && (comprehensiveData?.quarterlyInsights || comprehensiveData?.annualReportInsights || comprehensiveData?.earningsCallInsights) ? {
     recommendation: generateInvestmentRecommendation(
@@ -2792,71 +2837,167 @@ async function fetchYahooNews(symbol: string): Promise<{ headlines: string[]; ar
     }
 }
 
-// ── NSE Delivery Volume Data (Bhavcopy proxy via Yahoo + NSE) ──
-async function fetchDeliveryData(symbol: string, historicalVolumes: number[], historicalPrices: number[]): Promise<{
+// ── NSE Session Manager (handles cookie acquisition + retry) ──
+let nseSessionCookies: string | null = null;
+let nseSessionTimestamp: number = 0;
+const NSE_SESSION_TTL = 10 * 60 * 1000; // 10 minutes
+
+async function getNSESession(): Promise<string | null> {
+    if (nseSessionCookies && Date.now() - nseSessionTimestamp < NSE_SESSION_TTL) {
+        return nseSessionCookies;
+    }
+    try {
+        const homepageResponse = await fetchWithTimeout(
+            'https://www.nseindia.com',
+            {
+                headers: {
+                    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                    'Accept': 'text/html,application/xhtml+xml',
+                    'Accept-Language': 'en-US,en;q=0.9',
+                },
+            },
+            8000
+        );
+        const cookies = homepageResponse.headers.getSetCookie?.() || [];
+        nseSessionCookies = cookies.map((c: string) => c.split(';')[0]).join('; ');
+        nseSessionTimestamp = Date.now();
+        console.log(`✅ [NSE Session] Acquired session cookies`);
+        return nseSessionCookies;
+    } catch (err: any) {
+        console.warn(`⚠️ [NSE Session] Failed to acquire: ${err.message}`);
+        nseSessionCookies = null;
+        return null;
+    }
+}
+
+async function fetchNSEWithRetry(url: string, maxRetries: number = 2): Promise<Response | null> {
+    for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        try {
+            const cookies = await getNSESession();
+            const response = await fetchWithTimeout(
+                url,
+                {
+                    headers: {
+                        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+                        'Accept': 'application/json',
+                        'Accept-Language': 'en-US,en;q=0.9',
+                        'Referer': 'https://www.nseindia.com/',
+                        ...(cookies ? { 'Cookie': cookies } : {}),
+                    },
+                },
+                8000
+            );
+            if (response.ok) return response;
+            if (response.status === 401 || response.status === 403) {
+                console.warn(`⚠️ [NSE] ${response.status} on attempt ${attempt + 1}, refreshing session...`);
+                nseSessionCookies = null;
+                if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+                continue;
+            }
+            return response;
+        } catch (err: any) {
+            console.warn(`⚠️ [NSE] Attempt ${attempt + 1} failed: ${err.message}`);
+            if (attempt < maxRetries) await new Promise(r => setTimeout(r, 1000 * (attempt + 1)));
+        }
+    }
+    return null;
+}
+
+// ── NSE Historical Delivery Data ──
+async function fetchNSEHistoricalDelivery(
+    nseSymbol: string,
+    days: number = 30
+): Promise<{ date: string; deliveryPercent: number; tradedVolume: number; deliveryVolume: number }[] | null> {
+    try {
+        const toDate = new Date();
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - days);
+        const fmt = (d: Date) => `${d.getDate().toString().padStart(2, '0')}-${(d.getMonth() + 1).toString().padStart(2, '0')}-${d.getFullYear()}`;
+
+        const url = `https://www.nseindia.com/api/historical/securityArchives?from=${fmt(fromDate)}&to=${fmt(toDate)}&symbol=${encodeURIComponent(nseSymbol)}&dataType=priceVolumeDeliverable&series=EQ`;
+        console.log(`📦 [NSE Historical] Fetching ${days}-day delivery data for ${nseSymbol}...`);
+
+        const response = await fetchNSEWithRetry(url);
+        if (!response?.ok) return null;
+
+        const data = await response.json();
+        const records = data?.data || [];
+
+        if (!Array.isArray(records) || records.length === 0) return null;
+
+        const history = records.map((r: any) => {
+            const tradedVol = parseFloat(String(r.CH_TOT_TRADED_QTY || r.TOTTRDQTY || 0).replace(/,/g, ''));
+            const deliveryVol = parseFloat(String(r.COP_DELIV_QTY || r.DELIVERYQTY || 0).replace(/,/g, ''));
+            const deliveryPct = parseFloat(String(r.COP_DELIV_PERC || r.DELIVERYPER || r.DELIV_PER || 0).replace(/,/g, ''));
+            const dateStr = r.CH_TIMESTAMP || r.TIMESTAMP || r.mTIMESTAMP || '';
+            const d = new Date(dateStr);
+            return {
+                date: `${d.getDate()}/${d.getMonth() + 1}`,
+                deliveryPercent: Math.round(deliveryPct * 10) / 10,
+                tradedVolume: tradedVol,
+                deliveryVolume: deliveryVol,
+            };
+        }).reverse(); // NSE returns newest first, we want oldest first
+
+        console.log(`✅ [NSE Historical] Fetched ${history.length} days of real delivery data`);
+        return history;
+    } catch (err: any) {
+        console.warn(`⚠️ [NSE Historical] Failed: ${err.message}`);
+        return null;
+    }
+}
+
+// ── NSE Delivery Volume Data ──
+async function fetchDeliveryData(symbol: string, historicalVolumes: number[], historicalPrices: number[], historicalDates: number[] = []): Promise<{
     deliveryPercent: number;
     tradedVolume: number;
     deliveryVolume: number;
     history: { date: string; deliveryPercent: number; tradedVolume: number; deliveryVolume: number }[];
     avgDeliveryPercent: number;
+    source: 'nse_live' | 'estimated';
 } | null> {
     try {
+        // Check cache first
+        const cached = deliveryCache.getData(symbol, CACHE_DURATION_DELIVERY);
+        if (cached) {
+            console.log(`✅ [Delivery] Cache hit for ${symbol}`);
+            return cached;
+        }
+
         console.log(`📦 [Delivery] Fetching delivery volume data for ${symbol}...`);
         const isIndian = symbol.includes('.NS') || symbol.includes('.BO');
 
-        // For Indian stocks, try NSE API first
+        // For Indian stocks, fetch real historical delivery data from NSE
         if (isIndian) {
             const nseSymbol = symbol.replace('.NS', '').replace('.BO', '');
             try {
-                // NSE Bhavcopy / equity data endpoint
-                const nseResponse = await fetchWithTimeout(
-                    `https://www.nseindia.com/api/quote-equity?symbol=${encodeURIComponent(nseSymbol)}&section=trade_info`,
-                    {
-                        headers: {
-                            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-                            'Accept': 'application/json',
-                            'Accept-Language': 'en-US,en;q=0.9',
-                            'Referer': 'https://www.nseindia.com',
-                        }
-                    },
-                    8000
-                );
+                const nseHistory = await fetchNSEHistoricalDelivery(nseSymbol, 30);
 
-                if (nseResponse.ok) {
-                    const nseData = await nseResponse.json();
-                    const marketDeptOrderBook = nseData?.marketDeptOrderBook;
-                    const securityInfo = nseData?.securityWiseDP;
+                if (nseHistory && nseHistory.length > 0) {
+                    const latest = nseHistory[nseHistory.length - 1];
+                    const last10 = nseHistory.slice(-10);
+                    const avgDelivery = last10.reduce((s, h) => s + h.deliveryPercent, 0) / last10.length;
 
-                    if (securityInfo) {
-                        const deliveryPct = parseFloat(securityInfo.deliveryToTradedQuantity) || 0;
-                        const tradedQty = parseFloat(securityInfo.quantityTraded?.replace(/,/g, '')) || 0;
-                        const deliveryQty = parseFloat(securityInfo.deliveryQuantity?.replace(/,/g, '')) || 0;
-
-                        console.log(`✅ [Delivery] NSE data: ${deliveryPct.toFixed(1)}% delivery, ${tradedQty} traded`);
-
-                        // Build a proxy history from Yahoo volume data (last 10 days)
-                        const history = buildVolumeHistory(historicalVolumes, historicalPrices, deliveryPct);
-
-                        return {
-                            deliveryPercent: deliveryPct,
-                            tradedVolume: tradedQty,
-                            deliveryVolume: deliveryQty,
-                            history,
-                            avgDeliveryPercent: history.length > 0
-                                ? history.reduce((s, h) => s + h.deliveryPercent, 0) / history.length
-                                : deliveryPct,
-                        };
-                    }
+                    const result = {
+                        deliveryPercent: latest.deliveryPercent,
+                        tradedVolume: latest.tradedVolume,
+                        deliveryVolume: latest.deliveryVolume,
+                        history: last10,
+                        avgDeliveryPercent: Math.round(avgDelivery * 10) / 10,
+                        source: 'nse_live' as const,
+                    };
+                    deliveryCache.set(symbol, result);
+                    console.log(`✅ [Delivery] NSE real data: ${latest.deliveryPercent}% delivery, ${nseHistory.length} days fetched`);
+                    return result;
                 }
             } catch (nseErr: any) {
-                console.warn(`⚠️ [Delivery] NSE API failed: ${nseErr.message}, falling back to estimation`);
+                console.warn(`⚠️ [Delivery] NSE historical fetch failed: ${nseErr.message}, falling back to estimation`);
             }
         }
 
-        // Fallback: estimate delivery % from Yahoo volume patterns
-        // Higher volume days with price increase tend to have higher delivery
+        // Fallback for non-Indian stocks or when NSE is unreachable: heuristic estimation
         if (historicalVolumes.length >= 10 && historicalPrices.length >= 10) {
-            const history = buildVolumeHistory(historicalVolumes, historicalPrices);
+            const history = buildVolumeHistory(historicalVolumes, historicalPrices, historicalDates);
             const latestDelivery = history.length > 0 ? history[history.length - 1].deliveryPercent : 50;
             const avgDelivery = history.length > 0
                 ? history.reduce((s, h) => s + h.deliveryPercent, 0) / history.length
@@ -2864,13 +3005,16 @@ async function fetchDeliveryData(symbol: string, historicalVolumes: number[], hi
 
             console.log(`✅ [Delivery] Estimated: ${latestDelivery.toFixed(1)}% (from volume pattern analysis)`);
 
-            return {
+            const result = {
                 deliveryPercent: latestDelivery,
                 tradedVolume: historicalVolumes[historicalVolumes.length - 1] || 0,
                 deliveryVolume: Math.round((historicalVolumes[historicalVolumes.length - 1] || 0) * (latestDelivery / 100)),
                 history,
                 avgDeliveryPercent: avgDelivery,
+                source: 'estimated' as const,
             };
+            deliveryCache.set(symbol, result);
+            return result;
         }
 
         return null;
@@ -2884,6 +3028,7 @@ async function fetchDeliveryData(symbol: string, historicalVolumes: number[], hi
 function buildVolumeHistory(
     volumes: number[],
     prices: number[],
+    dates: number[] = [],
     knownDeliveryPct?: number
 ): { date: string; deliveryPercent: number; tradedVolume: number; deliveryVolume: number }[] {
     const history: { date: string; deliveryPercent: number; tradedVolume: number; deliveryVolume: number }[] = [];
@@ -2910,19 +3055,23 @@ function buildVolumeHistory(
         else if (priceChange < -0.01 && volRatio > 1.3) estimatedDelivery = 35;
         else if (priceChange < -0.005) estimatedDelivery = 42;
         else if (volRatio > 1.5) estimatedDelivery = 38; // high volume churn
-        else estimatedDelivery = 48 + Math.random() * 8; // normal range
+        else {
+            // Deterministic variation based on index and volume to avoid non-determinism
+            const seed = ((vol % 1000) * 0.008 + (i % 5) * 1.2) % 8;
+            estimatedDelivery = 48 + seed; // normal range 48-56
+        }
 
-        // If we know today's actual delivery %, calibrate the estimates
+        // Clamp heuristic estimates to realistic range
+        estimatedDelivery = Math.max(15, Math.min(90, estimatedDelivery));
+
+        // Override with actual NSE delivery % for the latest day (after clamp so real data is preserved)
         if (knownDeliveryPct !== undefined && i === len - 1) {
             estimatedDelivery = knownDeliveryPct;
         }
 
-        // Clamp to realistic range
-        estimatedDelivery = Math.max(15, Math.min(90, estimatedDelivery));
-
-        const daysAgo = len - 1 - i;
-        const date = new Date();
-        date.setDate(date.getDate() - daysAgo);
+        const date = dates[i] != null
+            ? new Date(dates[i] * 1000)
+            : (() => { const d = new Date(); d.setDate(d.getDate() - (len - 1 - i)); return d; })();
         const dateStr = `${date.getDate()}/${date.getMonth() + 1}`;
 
         history.push({
@@ -3277,6 +3426,100 @@ Return ONLY this JSON:
         return null;
     } catch (err: any) {
         console.warn(`⚠️ [Gemini Analysis] Failed: ${err.message}`);
+        return null;
+    }
+}
+
+// ── Gemini Volume Context: qualitative reasoning about volume direction ──
+async function getGeminiVolumeContext(
+    symbol: string,
+    currentPrice: number,
+    deliveryData: {
+        deliveryPercent: number;
+        avgDeliveryPercent: number;
+        history: { date: string; deliveryPercent: number; tradedVolume: number }[];
+        source?: string;
+    } | null,
+    mlVolumePredictions: {
+        volume_trend: string;
+        delivery_trend: string;
+        volume_predictions: { day: number; volume: number; change_pct: number }[];
+        delivery_predictions: { day: number; delivery_pct: number }[];
+    } | null,
+    sentimentData: { score: number; magnitude: number; summary: string; headlines: string[] } | null,
+    technicalIndicators: any,
+): Promise<{
+    volumeOutlook: string;
+    direction: string;
+    reasoning: string;
+    catalysts: string[];
+    confidence: string;
+} | null> {
+    try {
+        let context = `You are a volume analysis expert for Indian/global stocks.
+Analyze the delivery and volume pattern for ${symbol} (current price: ${currentPrice}).
+
+`;
+
+        if (deliveryData) {
+            context += `DELIVERY DATA (source: ${deliveryData.source || 'unknown'}):
+- Current delivery %: ${deliveryData.deliveryPercent.toFixed(1)}%
+- Average delivery %: ${deliveryData.avgDeliveryPercent.toFixed(1)}%
+- Recent history: ${deliveryData.history.slice(-5).map(h => `${h.date}: ${h.deliveryPercent}%`).join(', ')}
+
+`;
+        }
+
+        if (mlVolumePredictions) {
+            context += `ML VOLUME PREDICTIONS:
+- Volume trend: ${mlVolumePredictions.volume_trend}
+- Delivery trend: ${mlVolumePredictions.delivery_trend}
+- Next-day predicted volume change: ${mlVolumePredictions.volume_predictions[0]?.change_pct?.toFixed(1)}%
+- Next-day predicted delivery %: ${mlVolumePredictions.delivery_predictions[0]?.delivery_pct?.toFixed(1)}%
+
+`;
+        }
+
+        if (sentimentData) {
+            context += `NEWS SENTIMENT:
+- Score: ${sentimentData.score.toFixed(2)} (${sentimentData.score > 0.3 ? 'bullish' : sentimentData.score < -0.3 ? 'bearish' : 'neutral'})
+- Key headlines: ${sentimentData.headlines.slice(0, 3).join('; ')}
+
+`;
+        }
+
+        if (technicalIndicators) {
+            context += `TECHNICAL CONTEXT:
+- RSI: ${technicalIndicators.rsi?.value?.toFixed(1) || 'N/A'}
+- MACD: ${technicalIndicators.macd?.trend || 'N/A'}
+
+`;
+        }
+
+        context += `TASK: Predict the next-day VOLUME behavior (not price).
+Consider: earnings dates, F&O expiry, index rebalancing, news catalysts, institutional activity patterns.
+
+Return ONLY this JSON (no markdown):
+{
+  "volumeOutlook": "spike_likely|above_average|normal|below_average|dry_up_likely",
+  "direction": "bullish_volume|bearish_volume|neutral",
+  "reasoning": "One paragraph explaining why volume may spike/decline/stay normal based on the data above and any known upcoming events",
+  "catalysts": ["catalyst1", "catalyst2"],
+  "confidence": "high|medium|low"
+}`;
+
+        console.log(`📊 [Gemini Volume] Requesting volume context for ${symbol}...`);
+        const response = await callGeminiAPI(context, { temperature: 0.3, maxTokens: 2000 });
+        const parsed = extractJSON(response);
+
+        if (parsed && parsed.volumeOutlook && parsed.reasoning) {
+            console.log(`✅ [Gemini Volume] Outlook: ${parsed.volumeOutlook}, Direction: ${parsed.direction}`);
+            return parsed;
+        }
+        console.warn(`⚠️ [Gemini Volume] Invalid response format`);
+        return null;
+    } catch (err: any) {
+        console.warn(`⚠️ [Gemini Volume] Failed: ${err.message}`);
         return null;
     }
 }

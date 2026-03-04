@@ -79,7 +79,7 @@ export class CredentialStore {
     
     encrypt(text) {
         const algorithm = 'aes-256-cbc';
-        const encryptionSecret = process.env.QUOTES || 'If-you-dont-find-a-way-to-make-money-while-you-sleep,-you-will-work-until-you-die'
+        const encryptionSecret = process.env.QUOTES 
         const key = crypto.scryptSync(encryptionSecret, 'salt', 32 );
         const iv = crypto.randomBytes(16);
         
@@ -92,7 +92,7 @@ export class CredentialStore {
     
     decrypt(encryptedValue, ivHex) {
         const algorithm = 'aes-256-cbc';
-        const encryptionSecret = process.env.QUOTES || 'If-you-dont-find-a-way-to-make-money-while-you-sleep,-you-will-work-until-you-die';
+        const encryptionSecret = process.env.QUOTES 
         const key = crypto.scryptSync(encryptionSecret, 'salt', 32);
         const iv = Buffer.from(ivHex, 'hex');
         
