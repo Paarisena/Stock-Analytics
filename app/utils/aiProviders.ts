@@ -7,110 +7,10 @@ import OpenAI from 'openai';
 import Groq from 'groq-sdk';
 import { GoogleGenerativeAI } from '@google/generative-ai';
 
-// Initialize and export clients
-// export const perplexity = new OpenAI({
-//     apiKey: process.env.PERPLEXITY_API || '',
-//     baseURL: 'https://api.perplexity.ai',
-// });
 
-// export const groq = new Groq({
-//     apiKey: process.env.GROQ_API_KEY || '',
-// });
 
 export const gemini = new GoogleGenerativeAI(process.env.GEMINI_API_KEY || '');
 
-// ========================
-// PERPLEXITY API WRAPPER
-// ========================
-
-// interface PerplexityOptions<T = string> {
-//     model?: string;
-//     temperature?: number;
-//     maxTokens?: number;
-//     parser?: (content: string) => T;
-// }
-
-// interface PerplexityResult<T = string> {
-//     content: T;
-//     tokensUsed?: number;
-//     citations?: any[];
-// }
-
-// export async function callPerplexityAPI<T = string>(
-//     prompt: string,
-//     options: PerplexityOptions<T> = {}
-// ): Promise<PerplexityResult<T>> {
-//     const {
-//         model = 'sonar',
-//         temperature = 0.3,
-//         maxTokens = 2500,
-//         parser
-//     } = options;
-
-//     try {
-//         const completion = await perplexity.chat.completions.create({
-//             model,
-//             messages: [{ role: 'user', content: prompt }],
-//             temperature,
-//             max_tokens: maxTokens
-//         });
-
-//         const rawContent = completion.choices[0]?.message?.content || '';
-//         const content = parser ? parser(rawContent) : rawContent as T;
-        
-//         console.log(`✅ [Perplexity] Response received (${rawContent.length} chars)`);
-
-//         return {
-//             content,
-//             tokensUsed: (completion.usage?.total_tokens || 0)
-//         };
-//     } catch (error: any) {
-//         console.error('❌ [Perplexity API] Error:', error.message);
-//         throw error;
-//     }
-// }
-
-// // ========================
-// // GROQ API WRAPPER
-// // ========================
-
-// interface GroqOptions<T = string> {
-//     model?: string;
-//     temperature?: number;
-//     maxTokens?: number;
-//     parser?: (content: string) => T;
-// }
-
-// export async function callGroqAPI<T = string>(
-//     prompt: string,
-//     options: GroqOptions<T> = {}
-// ): Promise<T> {
-//     const {
-//         model = 'llama-3.3-70b-versatile',
-//         temperature = 0.2,
-//         maxTokens = 2000,
-//         parser
-//     } = options;
-
-//     try {
-//         const completion = await groq.chat.completions.create({
-//             model,
-//             messages: [{ role: 'user', content: prompt }],
-//             temperature,
-//             max_tokens: maxTokens
-//         });
-
-//         const rawContent = completion.choices[0]?.message?.content || '';
-//         const content = parser ? parser(rawContent) : rawContent as T;
-        
-//         console.log(`✅ [Groq] Response received (${rawContent.length} chars)`);
-        
-//         return content;
-//     } catch (error: any) {
-//         console.error('❌ [Groq API] Error:', error.message);
-//         throw error;
-//     }
-// }
 
 // ========================
 // GEMINI SEARCH WRAPPER
@@ -301,48 +201,5 @@ export async function callGeminiWithPDF(
     }
 }
 
-// ========================
-// BATCH PERPLEXITY CALL
-// ========================
 
-// interface BatchPerplexityResult {
-//     transcript: string;
-//     annualReport: string;
-//     quarter?: string;
-// }
-
-// export async function callPerplexityBatch(
-//     symbol: string,
-//     prompt: string
-// ): Promise<BatchPerplexityResult | null> {
-//     try {
-//         console.log(`📦 [Perplexity Batch] Fetching data for ${symbol}...`);
-        
-//         const result = await callPerplexityAPI(prompt, { maxTokens: 2500 });
-//         const content = result.content;
-
-//         // Split response into sections
-//         const transcriptSection = content.match(/===\s*EARNINGS TRANSCRIPT\s*===([\s\S]*?)===\s*ANNUAL REPORT\s*===/)?.[1] || content;
-//         const annualSection = content.match(/===\s*ANNUAL REPORT\s*===([\s\S]*?)$/)?.[1] || '';
-
-//         // Extract quarter for cache invalidation
-//         const quarterMatch = transcriptSection.match(/QUARTER:\s*(.+)/);
-//         const quarter = quarterMatch ? quarterMatch[1].trim() : 'Latest';
-
-//         console.log(`✅ [Perplexity Batch] Data fetched - SAVED 50% COST ($0.005 instead of $0.010)!`);
-
-//         return {
-//             transcript: transcriptSection.trim(),
-//             annualReport: annualSection.trim(),
-//             quarter
-//         };
-//     } catch (error) {
-//         console.error('❌ [Perplexity Batch] Error:', error);
-//         return null;
-//     }
-// }
-
-// ========================
-// GEMINI PDF ANALYSIS (For Transcripts)
-// ========================
 
