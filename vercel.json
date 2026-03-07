@@ -1,0 +1,33 @@
+{
+  "buildCommand": "pnpm build",
+  "installCommand": "pnpm install",
+  "framework": "nextjs",
+  "functions": {
+    "app/api/**": {
+      "maxDuration": 60
+    }
+  },
+  "env": [
+    "MONGODB_URL",
+    "GEMINI_API_KEY",
+    "O_EMAIL",
+    "O_PASSWORD",
+    "OPENAI_API_KEY",
+    "ALPHAVANTAGE_API",
+    "REQUIRE_API_KEY",
+    "API_KEY_1",
+    "API_KEY_2",
+    "API_KEY_3",
+    "REQUIRE_ADMIN_API_KEY",
+    "ADMIN_API_KEY",
+    "USE_PERSISTENT_RATE_LIMIT",
+    "ALLOWED_ORIGINS",
+    "DEBUG_SCRAPER",
+    "NEXT_PUBLIC_FIREBASE_API_KEY",
+    "NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN",
+    "NEXT_PUBLIC_FIREBASE_PROJECT_ID",
+    "NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET",
+    "NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID",
+    "NEXT_PUBLIC_FIREBASE_APP_ID"
+  ]
+}
